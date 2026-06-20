@@ -1,6 +1,9 @@
 import React from 'react';
+import { syncCurrentUser } from '@/lib/auth/sync-user';
 
-export default function Home() {
+export default async function Home() {
+  await syncCurrentUser();
+
   return (
     <main style={styles.container}>
       <div style={styles.hero}>
