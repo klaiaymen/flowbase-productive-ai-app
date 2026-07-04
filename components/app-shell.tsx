@@ -60,7 +60,7 @@ const sidebarGroups = [
       },
       {
         label: "Task / Kanban",
-        href: "/",
+        href: "/kanban",
         icon: ClipboardList,
         color: "text-amber-500",
         iconBg: "bg-amber-100",
