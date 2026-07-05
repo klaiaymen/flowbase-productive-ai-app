@@ -93,3 +93,45 @@
     @apply cursor-pointer;
   }
 }
+
+/* Liveblocks Custom Themes */
+.lb-root {
+  --lb-accent: #f59e0b; /* Amber */
+  --lb-radius: 12px;
+  --lb-font-family: Inter, sans-serif;
+  --lb-icon-weight: 600;
+  --lb-accent-foreground: #ffffff;
+  --lb-background: #ffffff;
+  --lb-foreground: #0f172a;
+}
+
+.lb-composer {
+  border: 1px solid rgba(226, 232, 240, 0.8) !important;
+  border-radius: 12px !important;
+  padding: 8px 12px !important;
+  background-color: #fafafa !important;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.02) !important;
+}
+
+.lb-composer-editor {
+  font-size: 13px !important;
+  font-weight: 500 !important;
+}
+
+.lb-thread {
+  border: 1px solid rgba(241, 245, 249, 0.9) !important;
+  border-radius: 16px !important;
+  background-color: #ffffff !important;
+  margin-bottom: 8px !important;
+  padding: 10px !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02) !important;
+}
+
+.lb-comment {
+  padding: 6px 0 !important;
+}
+
+.lb-avatar {
+  border-radius: 50% !important;
+}
+
