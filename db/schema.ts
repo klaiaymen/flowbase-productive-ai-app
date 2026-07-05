@@ -65,4 +65,15 @@ export const kanbanTasks = pgTable("kanban_tasks", {
 export type KanbanTask = typeof kanbanTasks.$inferSelect;
 export type NewKanbanTask = typeof kanbanTasks.$inferInsert;
 
+export const kanbanBoardShares = pgTable("kanban_board_shares", {
+  id: serial("id").primaryKey(),
+  boardId: integer("board_id").references(() => kanbanBoards.id, { onDelete: "cascade" }).notNull(),
+  email: text("email").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export type KanbanBoardShare = typeof kanbanBoardShares.$inferSelect;
+export type NewKanbanBoardShare = typeof kanbanBoardShares.$inferInsert;
+
+
 

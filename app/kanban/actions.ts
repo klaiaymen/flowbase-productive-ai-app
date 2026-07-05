@@ -1,7 +1,7 @@
 "use server";
 
-import { db, kanbanBoards, kanbanColumns, kanbanTasks, calendarItems } from "@/db";
-import { eq, and, asc, isNull } from "drizzle-orm";
+import { db, kanbanBoards, kanbanColumns, kanbanTasks, calendarItems, kanbanBoardShares, users } from "@/db";
+import { eq, and, asc, isNull, or, exists } from "drizzle-orm";
 import { syncCurrentUser } from "@/lib/auth/sync-user";
 import { saveCalendarItem, deleteCalendarItem } from "@/app/calendar/actions";
 
@@ -9,10 +9,32 @@ export async function getBoards() {
   try {
     const user = await syncCurrentUser();
     if (user) {
+      // Return boards owned by the user OR boards shared with the user's email
       return await db
-        .select()
+        .select({
+          id: kanbanBoards.id,
+          userId: kanbanBoards.userId,
+          name: kanbanBoards.name,
+          color: kanbanBoards.color,
+          createdAt: kanbanBoards.createdAt,
+        })
         .from(kanbanBoards)
-        .where(eq(kanbanBoards.userId, user.id))
+        .where(
+          or(
+            eq(kanbanBoards.userId, user.id),
+            exists(
+              db
+                .select()
+                .from(kanbanBoardShares)
+                .where(
+                  and(
+                    eq(kanbanBoardShares.boardId, kanbanBoards.id),
+                    eq(kanbanBoardShares.email, user.email)
+                  )
+                )
+            )
+          )
+        )
         .orderBy(kanbanBoards.createdAt);
     } else {
       return await db
@@ -331,5 +353,146 @@ export async function saveTaskPositions(taskOrders: { id: number; position: numb
   } catch (error) {
     console.error("Error in saveTaskPositions:", error);
     throw new Error("Failed to update task positions");
+  }
+}
+
+export async function getBoardShares(boardId: number) {
+  try {
+    const user = await syncCurrentUser();
+    if (!user) throw new Error("Unauthorized");
+
+    // Allow viewing if the user owns the board or if the board is shared with them
+    const [board] = await db
+      .select()
+      .from(kanbanBoards)
+      .where(and(eq(kanbanBoards.id, boardId), eq(kanbanBoards.userId, user.id)));
+
+    const isShared = await db
+      .select()
+      .from(kanbanBoardShares)
+      .where(and(eq(kanbanBoardShares.boardId, boardId), eq(kanbanBoardShares.email, user.email)));
+
+    if (!board && isShared.length === 0) {
+      throw new Error("Forbidden");
+    }
+
+    const shares = await db
+      .select()
+      .from(kanbanBoardShares)
+      .where(eq(kanbanBoardShares.boardId, boardId))
+      .orderBy(kanbanBoardShares.createdAt);
+
+    // Resolve user accounts if they exist in our db
+    const resolvedShares = await Promise.all(
+      shares.map(async (share) => {
+        const [existingUser] = await db
+          .select({
+            id: users.id,
+            name: users.name,
+          })
+          .from(users)
+          .where(eq(users.email, share.email));
+
+        return {
+          id: share.id,
+          email: share.email,
+          createdAt: share.createdAt,
+          hasAccount: !!existingUser,
+          userName: existingUser?.name || null,
+          userId: existingUser?.id || null,
+        };
+      })
+    );
+
+    return resolvedShares;
+  } catch (error) {
+    console.error("Error in getBoardShares:", error);
+    throw error;
+  }
+}
+
+export async function shareBoard(boardId: number, email: string) {
+  try {
+    const user = await syncCurrentUser();
+    if (!user) throw new Error("Unauthorized");
+
+    // Only owner of the board can invite others
+    const [board] = await db
+      .select()
+      .from(kanbanBoards)
+      .where(and(eq(kanbanBoards.id, boardId), eq(kanbanBoards.userId, user.id)));
+
+    if (!board) {
+      throw new Error("Only the board owner can share it");
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail) throw new Error("Email is required");
+
+    if (cleanEmail === user.email.toLowerCase()) {
+      throw new Error("You cannot share the board with yourself");
+    }
+
+    // Check if already shared
+    const [existingShare] = await db
+      .select()
+      .from(kanbanBoardShares)
+      .where(and(eq(kanbanBoardShares.boardId, boardId), eq(kanbanBoardShares.email, cleanEmail)));
+
+    if (existingShare) {
+      throw new Error("Board is already shared with this email");
+    }
+
+    const [newShare] = await db
+      .insert(kanbanBoardShares)
+      .values({
+        boardId,
+        email: cleanEmail,
+      })
+      .returning();
+
+    // Check if user has account
+    const [existingUser] = await db
+      .select()
+      .from(users)
+      .where(eq(users.email, cleanEmail));
+
+    return {
+      id: newShare.id,
+      email: newShare.email,
+      createdAt: newShare.createdAt,
+      hasAccount: !!existingUser,
+      userName: existingUser?.name || null,
+      userId: existingUser?.id || null,
+    };
+  } catch (error: any) {
+    console.error("Error in shareBoard:", error);
+    throw new Error(error.message || "Failed to share board");
+  }
+}
+
+export async function removeShare(boardId: number, shareId: number) {
+  try {
+    const user = await syncCurrentUser();
+    if (!user) throw new Error("Unauthorized");
+
+    // Only owner can remove shares
+    const [board] = await db
+      .select()
+      .from(kanbanBoards)
+      .where(and(eq(kanbanBoards.id, boardId), eq(kanbanBoards.userId, user.id)));
+
+    if (!board) {
+      throw new Error("Only the board owner can modify sharing permissions");
+    }
+
+    await db
+      .delete(kanbanBoardShares)
+      .where(and(eq(kanbanBoardShares.id, shareId), eq(kanbanBoardShares.boardId, boardId)));
+
+    return { success: true };
+  } catch (error: any) {
+    console.error("Error in removeShare:", error);
+    throw new Error(error.message || "Failed to remove share");
   }
 }
