@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
+import { UserButton } from "@clerk/nextjs";
 import {
   Bot,
   CalendarDays,
@@ -41,7 +42,7 @@ const sidebarGroups = [
       },
       {
         label: "Notes",
-        href: "/",
+        href: "/notes",
         icon: NotebookPen,
         color: "text-rose-500",
         iconBg: "bg-rose-100",
@@ -102,7 +103,7 @@ const sidebarGroups = [
   },
 ];
 
-export function AppShell({ children }: { children: React.ReactNode }) {
+export function AppShell({ children, noPadding }: { children: React.ReactNode; noPadding?: boolean }) {
   const pathname = usePathname();
   const [isCollapsed, setIsCollapsed] = useState(false);
 
@@ -209,15 +210,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             )}
           >
             {isCollapsed ? (
-              <UserRound
-                className="size-5 text-emerald-500"
-                aria-label="Personal workspace"
-              />
+              <UserButton appearance={{ elements: { avatarBox: "size-7" } }} />
             ) : (
               <div className="flex items-center gap-3">
-                <div className="grid size-8 place-items-center rounded-xl bg-emerald-100 text-emerald-700">
-                  <UserRound className="size-3.5" aria-hidden="true" />
-                </div>
+                <UserButton appearance={{ elements: { avatarBox: "size-8" } }} />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-[11px] font-bold text-slate-900">
                     Flowbase Pro
@@ -226,16 +222,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                     Personal workspace
                   </p>
                 </div>
-                <Settings
-                  className="size-3.5 shrink-0 text-cyan-500"
-                  aria-hidden="true"
-                />
               </div>
             )}
           </div>
         </aside>
 
-        <section className="min-w-0 flex-1 px-4 py-5 sm:px-6 lg:px-8">
+        <section className={noPadding ? "min-w-0 flex-1 overflow-hidden h-screen" : "min-w-0 flex-1 px-4 py-5 sm:px-6 lg:px-8"}>
           {children}
         </section>
       </div>

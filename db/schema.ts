@@ -75,5 +75,21 @@ export const kanbanBoardShares = pgTable("kanban_board_shares", {
 export type KanbanBoardShare = typeof kanbanBoardShares.$inferSelect;
 export type NewKanbanBoardShare = typeof kanbanBoardShares.$inferInsert;
 
+export const notes = pgTable("notes", {
+  id: serial("id").primaryKey(),
+  clerkUserId: text("clerk_user_id").notNull(),
+  title: text("title").notNull().default("Untitled"),
+  content: text("content").default(""), // Tiptap HTML string
+  color: text("color").notNull().default("rose"), // rose | violet | amber | sky | emerald | slate
+  isPinned: boolean("is_pinned").notNull().default(false),
+  isTrashed: boolean("is_trashed").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export type Note = typeof notes.$inferSelect;
+export type NewNote = typeof notes.$inferInsert;
+
+
 
 
