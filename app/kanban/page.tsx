@@ -41,6 +41,7 @@ import {
 import { LiveblocksProvider, RoomProvider, ClientSideSuspense, useOthers, useSelf, useThreads, useCreateThread } from "@liveblocks/react";
 import { Composer, Thread } from "@liveblocks/react-ui";
 import "@liveblocks/react-ui/styles.css";
+import { useActionError } from "@/hooks/use-action-error";
 
 declare global {
   interface Liveblocks {
@@ -152,6 +153,9 @@ export default function KanbanPage() {
   const [draggedTask, setDraggedTask] = useState<KanbanTask | null>(null);
   const [isDragOverColId, setIsDragOverColId] = useState<number | null>(null);
 
+  // Auth-aware error handler — redirects to /sign-in on 401
+  const handleError = useActionError();
+
   // Load Boards
   useEffect(() => {
     const fetchInitialData = async () => {
@@ -212,7 +216,8 @@ export default function KanbanPage() {
       setNewBoardName("");
       setNewBoardColor("emerald");
       setIsBoardModalOpen(false);
-    } catch (error) {
+    } catch (error: any) {
+      handleError(error, "Failed to create board.");
       console.error("Failed to create board:", error);
     }
   };

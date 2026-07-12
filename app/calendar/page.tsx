@@ -23,6 +23,7 @@ import {
   deleteCalendarItem,
   updateCalendarItemDate
 } from "./actions";
+import { useActionError } from "@/hooks/use-action-error";
 
 // Types matching the DB schema
 interface CalendarItem {
@@ -56,6 +57,9 @@ const DAYS_OF_WEEK = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 export default function CalendarPage() {
   const [items, setItems] = useState<CalendarItem[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Auth-aware error handler — redirects to /sign-in on 401
+  const handleError = useActionError();
 
   // Month navigation state
   const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
@@ -216,7 +220,8 @@ export default function CalendarPage() {
 
     try {
       await updateCalendarItemDate(id, dateString);
-    } catch (error) {
+    } catch (error: any) {
+      handleError(error, "Failed to update item date.");
       console.error("Drop save failed:", error);
       setItems(prevItems); // revert
     }
@@ -250,7 +255,8 @@ export default function CalendarPage() {
 
     try {
       await updateCalendarItemDate(id, null);
-    } catch (error) {
+    } catch (error: any) {
+      handleError(error, "Failed to update item date.");
       console.error("Drop draft failed:", error);
       setItems(prevItems); // revert
     }
@@ -274,7 +280,8 @@ export default function CalendarPage() {
       // Update state
       setItems(prev => [...prev, newItem as any]);
       setQuickDraftTitle("");
-    } catch (error) {
+    } catch (error: any) {
+      handleError(error, "Failed to save draft.");
       console.error("Quick draft save failed:", error);
     }
   };
@@ -305,7 +312,8 @@ export default function CalendarPage() {
 
       setIsModalOpen(false);
       setEditingItem(null);
-    } catch (error) {
+    } catch (error: any) {
+      handleError(error, "Failed to save calendar item.");
       console.error("Modal save failed:", error);
     }
   };
@@ -319,7 +327,8 @@ export default function CalendarPage() {
       setItems(prev => prev.filter(item => item.id !== editingItem.id));
       setIsModalOpen(false);
       setEditingItem(null);
-    } catch (error) {
+    } catch (error: any) {
+      handleError(error, "Failed to delete calendar item.");
       console.error("Delete failed:", error);
     }
   };

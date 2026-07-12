@@ -3,6 +3,7 @@
 import { db, calendarItems } from "@/db";
 import { eq, isNull, and } from "drizzle-orm";
 import { syncCurrentUser } from "@/lib/auth/sync-user";
+import { AuthError } from "@/lib/errors";
 
 export async function getCalendarItems() {
   try {
@@ -38,7 +39,10 @@ export async function saveCalendarItem(data: {
 }) {
   try {
     const user = await syncCurrentUser();
-    const userId = user ? user.id : null;
+    if (!user) {
+      throw new AuthError("You must be signed in to add or update calendar items.");
+    }
+    const userId = user.id;
 
     if (data.id) {
       // Update
@@ -52,11 +56,7 @@ export async function saveCalendarItem(data: {
           type: data.type,
           category: data.category,
         })
-        .where(
-          user
-            ? and(eq(calendarItems.id, data.id), eq(calendarItems.userId, user.id))
-            : and(eq(calendarItems.id, data.id), isNull(calendarItems.userId))
-        )
+        .where(and(eq(calendarItems.id, data.id), eq(calendarItems.userId, userId)))
         .returning();
       return updated;
     } else {
@@ -75,44 +75,42 @@ export async function saveCalendarItem(data: {
         .returning();
       return inserted;
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error in saveCalendarItem:", error);
-    throw new Error("Failed to save calendar item");
+    throw new Error(error.message || "Failed to save calendar item");
   }
 }
 
 export async function deleteCalendarItem(id: number) {
   try {
     const user = await syncCurrentUser();
+    if (!user) {
+      throw new AuthError("You must be signed in to delete calendar items.");
+    }
     await db
       .delete(calendarItems)
-      .where(
-        user
-          ? and(eq(calendarItems.id, id), eq(calendarItems.userId, user.id))
-          : and(eq(calendarItems.id, id), isNull(calendarItems.userId))
-      );
+      .where(and(eq(calendarItems.id, id), eq(calendarItems.userId, user.id)));
     return { success: true };
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error in deleteCalendarItem:", error);
-    throw new Error("Failed to delete calendar item");
+    throw new Error(error.message || "Failed to delete calendar item");
   }
 }
 
 export async function updateCalendarItemDate(id: number, date: string | null) {
   try {
     const user = await syncCurrentUser();
+    if (!user) {
+      throw new AuthError("You must be signed in to move calendar items.");
+    }
     const [updated] = await db
       .update(calendarItems)
       .set({ date })
-      .where(
-        user
-          ? and(eq(calendarItems.id, id), eq(calendarItems.userId, user.id))
-          : and(eq(calendarItems.id, id), isNull(calendarItems.userId))
-      )
+      .where(and(eq(calendarItems.id, id), eq(calendarItems.userId, user.id)))
       .returning();
     return updated;
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error in updateCalendarItemDate:", error);
-    throw new Error("Failed to update item date");
+    throw new Error(error.message || "Failed to update item date");
   }
 }

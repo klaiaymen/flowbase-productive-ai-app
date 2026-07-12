@@ -3,6 +3,7 @@
 import { db, kanbanBoards, kanbanColumns, kanbanTasks, calendarItems, kanbanBoardShares, users } from "@/db";
 import { eq, and, asc, isNull, or, exists } from "drizzle-orm";
 import { syncCurrentUser } from "@/lib/auth/sync-user";
+import { AuthError } from "@/lib/errors";
 import { saveCalendarItem, deleteCalendarItem } from "@/app/calendar/actions";
 
 export async function getBoards() {
@@ -52,7 +53,10 @@ export async function getBoards() {
 export async function createBoard(name: string, color: string) {
   try {
     const user = await syncCurrentUser();
-    const userId = user ? user.id : null;
+    if (!user) {
+      throw new AuthError("You must be signed in to create a Kanban board.");
+    }
+    const userId = user.id;
 
     const [board] = await db
       .insert(kanbanBoards)
@@ -67,9 +71,9 @@ export async function createBoard(name: string, color: string) {
     ]);
 
     return board;
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error in createBoard:", error);
-    throw new Error("Failed to create board");
+    throw new Error(error.message || "Failed to create board");
   }
 }
 
