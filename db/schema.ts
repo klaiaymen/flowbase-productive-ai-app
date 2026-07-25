@@ -90,6 +90,21 @@ export const notes = pgTable("notes", {
 export type Note = typeof notes.$inferSelect;
 export type NewNote = typeof notes.$inferInsert;
 
+export const whiteboards = pgTable("whiteboards", {
+  id: serial("id").primaryKey(),
+  clerkUserId: text("clerk_user_id").notNull(),
+  name: text("name").notNull().default("Untitled Whiteboard"),
+  elements: text("elements").default("[]"), // JSON stringified Excalidraw elements
+  appState: text("app_state").default("{}"), // JSON stringified Excalidraw appState
+  color: text("color").notNull().default("emerald"), // emerald | violet | sky | amber | rose | indigo
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export type Whiteboard = typeof whiteboards.$inferSelect;
+export type NewWhiteboard = typeof whiteboards.$inferInsert;
+
+
 
 
 
