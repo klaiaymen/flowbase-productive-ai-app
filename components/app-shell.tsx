@@ -16,7 +16,6 @@ import {
   Palette,
   Settings,
   Sparkles,
-  UserRound,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -54,7 +53,7 @@ const sidebarGroups = [
     items: [
       {
         label: "Whiteboard",
-        href: "/",
+        href: "/whiteboard",
         icon: Palette,
         color: "text-emerald-500",
         iconBg: "bg-emerald-100",
@@ -164,7 +163,8 @@ export function AppShell({ children, noPadding }: { children: React.ReactNode; n
                     {group.label}
                   </p>
                 )}
-                <div className="space-y-0.5">
+
+                <div className="flex flex-col gap-1">
                   {group.items.map((item) => {
                     const Icon = item.icon;
                     const isActive = pathname === item.href;
@@ -175,23 +175,27 @@ export function AppShell({ children, noPadding }: { children: React.ReactNode; n
                         href={item.href}
                         title={isCollapsed ? item.label : undefined}
                         className={cn(
-                          "group flex h-8 w-full items-center gap-2 rounded-lg px-2 text-left text-[12px] font-bold text-slate-600 transition hover:bg-white hover:text-slate-950 hover:shadow-sm",
-                          isActive &&
-                            "bg-white text-slate-950 shadow-sm ring-1 ring-cyan-100",
-                          isCollapsed && "justify-center px-0",
+                          "group relative flex items-center gap-2.5 rounded-2xl px-2.5 py-2 text-xs font-semibold transition-all duration-200",
+                          isActive
+                            ? "bg-slate-900 text-white shadow-md shadow-slate-900/10"
+                            : "text-slate-600 hover:bg-white/90 hover:text-slate-950 hover:shadow-sm",
+                          isCollapsed && "justify-center px-0 py-2.5",
                         )}
                       >
-                        <span
+                        <div
                           className={cn(
-                            "grid size-6 shrink-0 place-items-center rounded-lg transition group-hover:scale-105",
-                            item.iconBg,
+                            "flex size-7 shrink-0 items-center justify-center rounded-xl transition-all duration-200",
+                            isActive ? "bg-white/15" : item.iconBg,
                           )}
                         >
                           <Icon
-                            className={cn("size-3.5", item.color)}
-                            aria-hidden="true"
+                            className={cn(
+                              "size-4 transition-colors",
+                              isActive ? "text-white" : item.color,
+                            )}
                           />
-                        </span>
+                        </div>
+
                         {!isCollapsed && (
                           <span className="truncate">{item.label}</span>
                         )}
@@ -205,29 +209,25 @@ export function AppShell({ children, noPadding }: { children: React.ReactNode; n
 
           <div
             className={cn(
-              "mt-3 rounded-2xl border border-white/90 bg-gradient-to-br from-white/90 to-cyan-50/80 p-2.5 shadow-sm",
-              isCollapsed && "flex justify-center p-2",
+              "mt-auto flex items-center justify-between gap-2 border-t border-cyan-100/70 pt-3",
+              isCollapsed && "justify-center border-none pt-2",
             )}
           >
-            {isCollapsed ? (
-              <UserButton appearance={{ elements: { avatarBox: "size-7" } }} />
-            ) : (
-              <div className="flex items-center gap-3">
-                <UserButton appearance={{ elements: { avatarBox: "size-8" } }} />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-[11px] font-bold text-slate-900">
-                    Flowbase Pro
-                  </p>
-                  <p className="truncate text-[10px] text-muted-foreground">
-                    Personal workspace
-                  </p>
-                </div>
-              </div>
+            <UserButton />
+            {!isCollapsed && (
+              <span className="text-[10px] font-medium text-slate-400">
+                Logged in
+              </span>
             )}
           </div>
         </aside>
 
-        <section className={noPadding ? "min-w-0 flex-1 overflow-hidden h-screen" : "min-w-0 flex-1 px-4 py-5 sm:px-6 lg:px-8"}>
+        <section
+          className={cn(
+            "flex-1 min-w-0 min-h-screen",
+            noPadding ? "p-0" : "p-4 md:p-6 lg:p-8",
+          )}
+        >
           {children}
         </section>
       </div>
