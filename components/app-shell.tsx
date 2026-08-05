@@ -34,7 +34,7 @@ const sidebarGroups = [
       },
       {
         label: "Pages / Spaces",
-        href: "/",
+        href: "/spaces",
         icon: Layers3,
         color: "text-violet-500",
         iconBg: "bg-violet-100",
@@ -167,7 +167,9 @@ export function AppShell({ children, noPadding }: { children: React.ReactNode; n
                 <div className="flex flex-col gap-1">
                   {group.items.map((item) => {
                     const Icon = item.icon;
-                    const isActive = pathname === item.href;
+                    const isActive = item.href === "/"
+                      ? pathname === "/"
+                      : pathname.startsWith(item.href);
 
                     return (
                       <Link
