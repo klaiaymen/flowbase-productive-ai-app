@@ -1,6 +1,6 @@
 import "server-only";
 
-import { currentUser } from "@clerk/nextjs/server";
+import { currentUser, clerkClient } from "@clerk/nextjs/server";
 import { db, users } from "@/db";
 
 function getDisplayName(user: Awaited<ReturnType<typeof currentUser>>) {
@@ -24,12 +24,25 @@ export async function syncCurrentUser() {
 
   const [savedUser] = await db
     .insert(users)
-    .values({ email, name })
+    .values({ email, name, role: "member" })
     .onConflictDoUpdate({
       target: users.email,
       set: { name },
     })
     .returning();
+
+  if (savedUser && user) {
+    try {
+      const client = await clerkClient();
+      await client.users.updateUserMetadata(user.id, {
+        publicMetadata: {
+          role: savedUser.role,
+        },
+      });
+    } catch (error) {
+      console.error("Failed to sync Clerk publicMetadata:", error);
+    }
+  }
 
   return savedUser;
 }

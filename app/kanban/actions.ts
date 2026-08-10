@@ -6,11 +6,50 @@ import { syncCurrentUser } from "@/lib/auth/sync-user";
 import { AuthError } from "@/lib/errors";
 import { saveCalendarItem, deleteCalendarItem } from "@/app/calendar/actions";
 
+export async function getCurrentUserRoleAndEmail() {
+  const user = await syncCurrentUser();
+  if (!user) return null;
+  return {
+    id: user.id,
+    email: user.email,
+    role: user.role,
+    name: user.name,
+  };
+}
+
 export async function getBoards() {
   try {
     const user = await syncCurrentUser();
-    if (user) {
-      // Return boards owned by the user OR boards shared with the user's email
+    if (!user) {
+      return [];
+    }
+
+    const role = user.role;
+
+    if (role === "superuser" || role === "pmo") {
+      return await db
+        .select({
+          id: kanbanBoards.id,
+          userId: kanbanBoards.userId,
+          name: kanbanBoards.name,
+          color: kanbanBoards.color,
+          createdAt: kanbanBoards.createdAt,
+        })
+        .from(kanbanBoards)
+        .orderBy(kanbanBoards.createdAt);
+    } else if (role === "chef_projet") {
+      return await db
+        .select({
+          id: kanbanBoards.id,
+          userId: kanbanBoards.userId,
+          name: kanbanBoards.name,
+          color: kanbanBoards.color,
+          createdAt: kanbanBoards.createdAt,
+        })
+        .from(kanbanBoards)
+        .where(eq(kanbanBoards.userId, user.id))
+        .orderBy(kanbanBoards.createdAt);
+    } else if (role === "member") {
       return await db
         .select({
           id: kanbanBoards.id,
@@ -21,29 +60,22 @@ export async function getBoards() {
         })
         .from(kanbanBoards)
         .where(
-          or(
-            eq(kanbanBoards.userId, user.id),
-            exists(
-              db
-                .select()
-                .from(kanbanBoardShares)
-                .where(
-                  and(
-                    eq(kanbanBoardShares.boardId, kanbanBoards.id),
-                    eq(kanbanBoardShares.email, user.email)
-                  )
+          exists(
+            db
+              .select()
+              .from(kanbanBoardShares)
+              .where(
+                and(
+                  eq(kanbanBoardShares.boardId, kanbanBoards.id),
+                  eq(kanbanBoardShares.email, user.email)
                 )
-            )
+              )
           )
         )
         .orderBy(kanbanBoards.createdAt);
-    } else {
-      return await db
-        .select()
-        .from(kanbanBoards)
-        .where(isNull(kanbanBoards.userId))
-        .orderBy(kanbanBoards.createdAt);
     }
+
+    return [];
   } catch (error) {
     console.error("Error in getBoards:", error);
     return [];
@@ -55,6 +87,9 @@ export async function createBoard(name: string, color: string) {
     const user = await syncCurrentUser();
     if (!user) {
       throw new AuthError("You must be signed in to create a Kanban board.");
+    }
+    if (user.role === "member") {
+      throw new Error("Members cannot create boards.");
     }
     const userId = user.id;
 
@@ -208,6 +243,7 @@ export async function getTasks(boardId: number) {
         dueDate: kanbanTasks.dueDate,
         priority: kanbanTasks.priority,
         labels: kanbanTasks.labels,
+        assignedTo: kanbanTasks.assignedTo,
         syncCalendar: kanbanTasks.syncCalendar,
         syncNotes: kanbanTasks.syncNotes,
         calendarItemId: kanbanTasks.calendarItemId,
@@ -232,6 +268,7 @@ export async function saveTask(data: {
   dueDate?: string | null;
   priority: "low" | "medium" | "high";
   labels?: string | null;
+  assignedTo?: string | null;
   syncCalendar: boolean;
   syncNotes: boolean;
   calendarItemId?: number | null;
@@ -279,6 +316,7 @@ export async function saveTask(data: {
           dueDate: data.dueDate,
           priority: data.priority,
           labels: data.labels,
+          assignedTo: data.assignedTo,
           syncCalendar: data.syncCalendar,
           syncNotes: data.syncNotes,
           calendarItemId,
@@ -303,6 +341,7 @@ export async function saveTask(data: {
           dueDate: data.dueDate,
           priority: data.priority,
           labels: data.labels,
+          assignedTo: data.assignedTo,
           syncCalendar: data.syncCalendar,
           syncNotes: data.syncNotes,
           calendarItemId,

@@ -123,7 +123,7 @@ export function TemplateBuilderClient({ initialApps }: Props) {
         }
         if (res.success) {
           setApps((prev) =>
-            prev.map((a) => (a.id === id ? { ...a, isPinnedToSidebar: res.isPinnedToSidebar } : a))
+            prev.map((a) => (a.id === id ? { ...a, isPinnedToSidebar: res.isPinnedToSidebar ?? false } : a))
           );
           router.refresh();
         }

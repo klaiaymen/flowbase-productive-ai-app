@@ -35,8 +35,10 @@ import {
   saveTaskPositions,
   getBoardShares,
   shareBoard,
-  removeShare
+  removeShare,
+  getCurrentUserRoleAndEmail
 } from "./actions";
+import { Role } from "@/db/schema";
 
 import { LiveblocksProvider, RoomProvider, ClientSideSuspense, useOthers, useSelf, useThreads, useCreateThread } from "@liveblocks/react";
 import { Composer, Thread } from "@liveblocks/react-ui";
@@ -81,6 +83,7 @@ interface KanbanTask {
   dueDate: string | null;
   priority: "low" | "medium" | "high";
   labels: string | null; // JSON array of Label
+  assignedTo?: string | null; // email of assignee
   syncCalendar: boolean;
   syncNotes: boolean;
   calendarItemId: number | null;
@@ -127,6 +130,14 @@ export default function KanbanPage() {
   const [newBoardName, setNewBoardName] = useState("");
   const [newBoardColor, setNewBoardColor] = useState("emerald");
 
+  // User Auth & Role State
+  const [currentUser, setCurrentUser] = useState<{
+    id: number;
+    email: string;
+    role: Role;
+    name: string | null;
+  } | null>(null);
+
   // Task Modal state
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<KanbanTask | null>(null);
@@ -135,6 +146,7 @@ export default function KanbanPage() {
   const [taskDescription, setTaskDescription] = useState("");
   const [taskDueDate, setTaskDueDate] = useState("");
   const [taskPriority, setTaskPriority] = useState<"low" | "medium" | "high">("medium");
+  const [taskAssignedTo, setTaskAssignedTo] = useState("");
   const [taskSyncCalendar, setTaskSyncCalendar] = useState(false);
   const [taskSyncNotes, setTaskSyncNotes] = useState(false);
   const [taskLabels, setTaskLabels] = useState<Label[]>([]);
@@ -156,20 +168,26 @@ export default function KanbanPage() {
   // Auth-aware error handler — redirects to /sign-in on 401
   const handleError = useActionError();
 
-  // Load Boards
+  // Load Boards & User Info
   useEffect(() => {
     const fetchInitialData = async () => {
       try {
         setLoading(true);
-        const data = await getBoards();
-        setBoards(data);
-        if (data.length > 0) {
-          setActiveBoard(data[0]);
+        const [boardsData, userInfo] = await Promise.all([
+          getBoards(),
+          getCurrentUserRoleAndEmail(),
+        ]);
+        if (userInfo) {
+          setCurrentUser(userInfo);
+        }
+        setBoards(boardsData);
+        if (boardsData.length > 0) {
+          setActiveBoard(boardsData[0]);
         } else {
           setLoading(false);
         }
       } catch (error) {
-        console.error("Failed to fetch boards:", error);
+        console.error("Failed to fetch boards or user role:", error);
         setLoading(false);
       }
     };
@@ -208,6 +226,11 @@ export default function KanbanPage() {
   const handleCreateBoard = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newBoardName.trim()) return;
+
+    if (currentUser?.role === "member") {
+      alert("Members are not allowed to create boards.");
+      return;
+    }
 
     try {
       const board = await createBoard(newBoardName.trim(), newBoardColor);
@@ -294,6 +317,7 @@ export default function KanbanPage() {
     setTaskDescription("");
     setTaskDueDate(new Date().toISOString().split("T")[0]); // default to today
     setTaskPriority("medium");
+    setTaskAssignedTo(currentUser?.email || "");
     setTaskSyncCalendar(false);
     setTaskSyncNotes(false);
     setTaskLabels([]);
@@ -310,6 +334,7 @@ export default function KanbanPage() {
     setTaskDescription(task.description || "");
     setTaskDueDate(task.dueDate || new Date().toISOString().split("T")[0]);
     setTaskPriority(task.priority);
+    setTaskAssignedTo(task.assignedTo || "");
     setTaskSyncCalendar(task.syncCalendar);
     setTaskSyncNotes(task.syncNotes);
     setTaskLabels(JSON.parse(task.labels || "[]"));
@@ -345,6 +370,7 @@ export default function KanbanPage() {
         dueDate: taskDueDate || null,
         priority: taskPriority,
         labels: JSON.stringify(taskLabels),
+        assignedTo: taskAssignedTo.trim() || null,
         syncCalendar: taskSyncCalendar,
         syncNotes: taskSyncNotes,
         calendarItemId: editingTask?.calendarItemId,
@@ -593,6 +619,7 @@ export default function KanbanPage() {
                 }>
                   <CollaborativeBoardContent
                     activeBoard={activeBoard}
+                    currentUser={currentUser}
                     columns={columns}
                     setColumns={setColumns}
                     loading={loading}
@@ -620,6 +647,8 @@ export default function KanbanPage() {
                     setTaskDueDate={setTaskDueDate}
                     taskPriority={taskPriority}
                     setTaskPriority={setTaskPriority}
+                    taskAssignedTo={taskAssignedTo}
+                    setTaskAssignedTo={setTaskAssignedTo}
                     taskSyncCalendar={taskSyncCalendar}
                     setTaskSyncCalendar={setTaskSyncCalendar}
                     taskSyncNotes={taskSyncNotes}
@@ -749,6 +778,7 @@ export default function KanbanPage() {
 
 interface CollaborativeBoardContentProps {
   activeBoard: KanbanBoard;
+  currentUser: { id: number; email: string; role: Role; name: string | null } | null;
   columns: KanbanColumn[];
   loading: boolean;
   tasks: KanbanTask[];
@@ -776,6 +806,8 @@ interface CollaborativeBoardContentProps {
   setTaskDueDate: React.Dispatch<React.SetStateAction<string>>;
   taskPriority: "low" | "medium" | "high";
   setTaskPriority: React.Dispatch<React.SetStateAction<"low" | "medium" | "high">>;
+  taskAssignedTo: string;
+  setTaskAssignedTo: React.Dispatch<React.SetStateAction<string>>;
   taskSyncCalendar: boolean;
   setTaskSyncCalendar: React.Dispatch<React.SetStateAction<boolean>>;
   taskSyncNotes: boolean;
@@ -810,6 +842,7 @@ interface CollaborativeBoardContentProps {
 
 function CollaborativeBoardContent({
   activeBoard,
+  currentUser,
   columns,
   loading,
   tasks,
@@ -837,6 +870,8 @@ function CollaborativeBoardContent({
   setTaskDueDate,
   taskPriority,
   setTaskPriority,
+  taskAssignedTo,
+  setTaskAssignedTo,
   taskSyncCalendar,
   setTaskSyncCalendar,
   taskSyncNotes,
@@ -1140,16 +1175,19 @@ function CollaborativeBoardContent({
                       const priStyle = PRIORITY_STYLES[task.priority] || PRIORITY_STYLES.medium;
                       const labelsList: Label[] = JSON.parse(task.labels || "[]");
                       const commentCount = getCommentCount(task.id);
+                      const isMember = currentUser?.role === "member";
+                      const isForbidden = isMember && task.assignedTo !== currentUser?.email;
 
                       return (
                         <div
                           key={task.id}
-                          draggable
-                          onDragStart={(e) => handleDragStart(e, task)}
-                          onDrop={(e) => handleDropCard(e, idx, col.id)}
-                          onClick={(e) => openEditTaskModal(task, e)}
+                          draggable={!isForbidden}
+                          onDragStart={(e) => !isForbidden && handleDragStart(e, task)}
+                          onDrop={(e) => !isForbidden && handleDropCard(e, idx, col.id)}
+                          onClick={(e) => !isForbidden && openEditTaskModal(task, e)}
                           className={cn(
-                            "p-3 rounded-xl border bg-white flex flex-col gap-2 shadow-sm transition-all duration-200 cursor-grab active:cursor-grabbing border-slate-100 relative hover:shadow-md hover:scale-[1.01] hover:border-amber-200/50"
+                            "p-3 rounded-xl border bg-white flex flex-col gap-2 shadow-sm transition-all duration-200 cursor-grab active:cursor-grabbing border-slate-100 relative hover:shadow-md hover:scale-[1.01] hover:border-amber-200/50",
+                            isForbidden ? "opacity-30 pointer-events-none select-none" : ""
                           )}
                         >
                           {/* Task Title */}
@@ -1433,6 +1471,19 @@ function CollaborativeBoardContent({
                       <option value="high">High Priority</option>
                     </select>
                   </div>
+                </div>
+
+                {/* Assignee Email */}
+                <div className="flex flex-col gap-1.5">
+                  <label htmlFor="task-assignee" className="text-xs font-bold text-slate-600">Assigned To (Email)</label>
+                  <input
+                    id="task-assignee"
+                    type="email"
+                    value={taskAssignedTo}
+                    onChange={(e) => setTaskAssignedTo(e.target.value)}
+                    placeholder="assignee@example.com"
+                    className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-800 placeholder-slate-400 focus:border-amber-400 focus:outline-none"
+                  />
                 </div>
 
                 {/* Label Tag Builder */}
