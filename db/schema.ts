@@ -164,3 +164,24 @@ export const pageComments = pgTable("page_comments", {
 export type PageComment = typeof pageComments.$inferSelect;
 export type NewPageComment = typeof pageComments.$inferInsert;
 
+// ─── AI Templates (Generated Mini Apps) ───────────────────────────────────────
+
+export const aiTemplates = pgTable("ai_templates", {
+  id: serial("id").primaryKey(),
+  clerkUserId: text("clerk_user_id").notNull(),
+  appName: text("app_name").notNull(),
+  description: text("description").default(""),
+  icon: text("icon").notNull().default("Sparkles"), // Lucide icon name
+  color: text("color").notNull().default("#8B5CF6"), // Theme color hex/name
+  layout: text("layout").notNull().default("single-page"),
+  schemaJson: text("schema_json").notNull(), // JSON layout structure & fields
+  dataJson: text("data_json").notNull().default("{}"), // User interactive state data
+  isPinnedToSidebar: boolean("is_pinned_to_sidebar").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export type AiTemplate = typeof aiTemplates.$inferSelect;
+export type NewAiTemplate = typeof aiTemplates.$inferInsert;
+
+
