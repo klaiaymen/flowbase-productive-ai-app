@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { UserButton } from "@clerk/nextjs";
 import {
   Bot,
@@ -16,10 +16,17 @@ import {
   Palette,
   Settings,
   Sparkles,
+  Pin,
+  Flame, Wallet, Utensils, GraduationCap, CheckSquare, Activity, Target,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { getPinnedAiTemplates } from "@/app/templates/actions";
+
+const ICON_MAP: Record<string, React.ElementType> = {
+  Flame, Wallet, Utensils, GraduationCap, CheckSquare, Activity, Target, Sparkles,
+};
 
 const sidebarGroups = [
   {
@@ -67,7 +74,7 @@ const sidebarGroups = [
       },
       {
         label: "AI Template Builder",
-        href: "/",
+        href: "/templates",
         icon: Sparkles,
         color: "text-fuchsia-500",
         iconBg: "bg-fuchsia-100",
@@ -105,6 +112,13 @@ const sidebarGroups = [
 export function AppShell({ children, noPadding }: { children: React.ReactNode; noPadding?: boolean }) {
   const pathname = usePathname();
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [pinnedApps, setPinnedApps] = useState<Array<{ id: number; appName: string; icon: string; color: string }>>([]);
+
+  useEffect(() => {
+    getPinnedAiTemplates().then((apps) => {
+      setPinnedApps(apps);
+    });
+  }, [pathname]);
 
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,#bdfbea_0,#effcff_22%,#fff7d6_47%,#f1eaff_72%,#fff7fb_100%)] text-foreground">
@@ -207,6 +221,51 @@ export function AppShell({ children, noPadding }: { children: React.ReactNode; n
                 </div>
               </div>
             ))}
+
+            {/* ── Pinned AI Apps Section ── */}
+            {pinnedApps.length > 0 && (
+              <div>
+                {!isCollapsed && (
+                  <p className="mb-1.5 flex items-center gap-1 rounded-full bg-fuchsia-500/10 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.14em] text-fuchsia-600">
+                    <Pin className="size-2.5 fill-fuchsia-600" />
+                    Pinned Apps ({pinnedApps.length}/3)
+                  </p>
+                )}
+                <div className="flex flex-col gap-1">
+                  {pinnedApps.map((app) => {
+                    const AppIcon = ICON_MAP[app.icon] || Sparkles;
+                    const href = `/templates/${app.id}`;
+                    const isActive = pathname === href;
+
+                    return (
+                      <Link
+                        key={app.id}
+                        href={href}
+                        title={isCollapsed ? app.appName : undefined}
+                        className={cn(
+                          "group relative flex items-center gap-2.5 rounded-2xl px-2.5 py-2 text-xs font-semibold transition-all duration-200",
+                          isActive
+                            ? "bg-slate-900 text-white shadow-md shadow-slate-900/10"
+                            : "text-slate-600 hover:bg-white/90 hover:text-slate-950 hover:shadow-sm",
+                          isCollapsed && "justify-center px-0 py-2.5",
+                        )}
+                      >
+                        <div
+                          className="flex size-7 shrink-0 items-center justify-center rounded-xl text-white shadow-xs"
+                          style={{ backgroundColor: app.color || "#8B5CF6" }}
+                        >
+                          <AppIcon className="size-3.5 text-white" />
+                        </div>
+
+                        {!isCollapsed && (
+                          <span className="truncate font-semibold">{app.appName}</span>
+                        )}
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </nav>
 
           <div
