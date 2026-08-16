@@ -96,7 +96,7 @@ export function AppShell({ children, noPadding }: { children: React.ReactNode; n
       items: [
         {
           label: "AI Assistant",
-          href: "/",
+          href: "/assistant",
           icon: Bot,
           color: "text-cyan-500",
           iconBg: "bg-cyan-100",

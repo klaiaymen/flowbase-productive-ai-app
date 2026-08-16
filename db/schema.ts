@@ -33,6 +33,8 @@ export const kanbanBoards = pgTable("kanban_boards", {
   userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   color: text("color").notNull(),
+  description: text("description").default(""),
+  manualStatus: text("manual_status"), // null | 'auto' | 'on_hold' | 'cancelled'
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
