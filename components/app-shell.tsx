@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useEffect } from "react";
-import { UserButton } from "@clerk/nextjs";
+import { UserButton, useUser } from "@clerk/nextjs";
 import {
   Bot,
   CalendarDays,
@@ -16,6 +16,7 @@ import {
   Palette,
   Settings,
   Sparkles,
+  Shield,
   Pin,
   Flame, Wallet, Utensils, GraduationCap, CheckSquare, Activity, Target,
 } from "lucide-react";
@@ -28,91 +29,106 @@ const ICON_MAP: Record<string, React.ElementType> = {
   Flame, Wallet, Utensils, GraduationCap, CheckSquare, Activity, Target, Sparkles,
 };
 
-const sidebarGroups = [
-  {
-    label: "Workspace",
-    items: [
-      {
-        label: "Dashboard",
-        href: "/",
-        icon: LayoutDashboard,
-        color: "text-sky-500",
-        iconBg: "bg-sky-100",
-      },
-      {
-        label: "Pages / Spaces",
-        href: "/spaces",
-        icon: Layers3,
-        color: "text-violet-500",
-        iconBg: "bg-violet-100",
-      },
-      {
-        label: "Notes",
-        href: "/notes",
-        icon: NotebookPen,
-        color: "text-rose-500",
-        iconBg: "bg-rose-100",
-      },
-    ],
-  },
-  {
-    label: "Create",
-    items: [
-      {
-        label: "Whiteboard",
-        href: "/whiteboard",
-        icon: Palette,
-        color: "text-emerald-500",
-        iconBg: "bg-emerald-100",
-      },
-      {
-        label: "Task / Kanban",
-        href: "/kanban",
-        icon: ClipboardList,
-        color: "text-amber-500",
-        iconBg: "bg-amber-100",
-      },
-      {
-        label: "AI Template Builder",
-        href: "/templates",
-        icon: Sparkles,
-        color: "text-fuchsia-500",
-        iconBg: "bg-fuchsia-100",
-      },
-    ],
-  },
-  {
-    label: "Tools",
-    items: [
-      {
-        label: "AI Assistant",
-        href: "/",
-        icon: Bot,
-        color: "text-cyan-500",
-        iconBg: "bg-cyan-100",
-      },
-      {
-        label: "Calendar",
-        href: "/calendar",
-        icon: CalendarDays,
-        color: "text-orange-500",
-        iconBg: "bg-orange-100",
-      },
-      {
-        label: "Settings",
-        href: "/",
-        icon: Settings,
-        color: "text-slate-500",
-        iconBg: "bg-slate-100",
-      },
-    ],
-  },
-];
-
 export function AppShell({ children, noPadding }: { children: React.ReactNode; noPadding?: boolean }) {
   const pathname = usePathname();
+  const { user } = useUser();
+  const role = user?.publicMetadata?.role as string | undefined;
+  const isSuperuser = role === "superuser";
+
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [pinnedApps, setPinnedApps] = useState<Array<{ id: number; appName: string; icon: string; color: string }>>([]);
+
+  const sidebarGroups = [
+    {
+      label: "Workspace",
+      items: [
+        {
+          label: "Dashboard",
+          href: "/",
+          icon: LayoutDashboard,
+          color: "text-sky-500",
+          iconBg: "bg-sky-100",
+        },
+        {
+          label: "Pages / Spaces",
+          href: "/spaces",
+          icon: Layers3,
+          color: "text-violet-500",
+          iconBg: "bg-violet-100",
+        },
+        {
+          label: "Notes",
+          href: "/notes",
+          icon: NotebookPen,
+          color: "text-rose-500",
+          iconBg: "bg-rose-100",
+        },
+      ],
+    },
+    {
+      label: "Create",
+      items: [
+        {
+          label: "Whiteboard",
+          href: "/whiteboard",
+          icon: Palette,
+          color: "text-emerald-500",
+          iconBg: "bg-emerald-100",
+        },
+        {
+          label: "Task / Kanban",
+          href: "/kanban",
+          icon: ClipboardList,
+          color: "text-amber-500",
+          iconBg: "bg-amber-100",
+        },
+        {
+          label: "AI Template Builder",
+          href: "/templates",
+          icon: Sparkles,
+          color: "text-fuchsia-500",
+          iconBg: "bg-fuchsia-100",
+        },
+      ],
+    },
+    {
+      label: "Tools",
+      items: [
+        {
+          label: "AI Assistant",
+          href: "/",
+          icon: Bot,
+          color: "text-cyan-500",
+          iconBg: "bg-cyan-100",
+        },
+        {
+          label: "Calendar",
+          href: "/calendar",
+          icon: CalendarDays,
+          color: "text-orange-500",
+          iconBg: "bg-orange-100",
+        },
+        {
+          label: "Settings",
+          href: "/",
+          icon: Settings,
+          color: "text-slate-500",
+          iconBg: "bg-slate-100",
+        },
+        ...(isSuperuser
+          ? [
+              {
+                label: "Admin Panel",
+                href: "/admin",
+                icon: Shield,
+                color: "text-purple-600",
+                iconBg: "bg-purple-100",
+              },
+            ]
+          : []),
+      ],
+    },
+  ];
 
   useEffect(() => {
     getPinnedAiTemplates().then((apps) => {

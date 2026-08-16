@@ -1,9 +1,12 @@
 import { pgTable, serial, text, timestamp, integer, boolean } from "drizzle-orm/pg-core";
 
+export type Role = "superuser" | "pmo" | "chef_projet" | "member";
+
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
   name: text("name"),
   email: text("email").notNull().unique(),
+  role: text("role").$type<Role>().notNull().default("member"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -55,6 +58,7 @@ export const kanbanTasks = pgTable("kanban_tasks", {
   dueDate: text("due_date"), // 'YYYY-MM-DD'
   priority: text("priority").notNull().default("medium"), // 'low' | 'medium' | 'high'
   labels: text("labels"), // JSON stringified array of labels: [{ text: string, color: string }]
+  assignedTo: text("assigned_to"), // email of assignee
   syncCalendar: boolean("sync_calendar").notNull().default(false),
   syncNotes: boolean("sync_notes").notNull().default(false),
   calendarItemId: integer("calendar_item_id").references(() => calendarItems.id, { onDelete: "set null" }),
