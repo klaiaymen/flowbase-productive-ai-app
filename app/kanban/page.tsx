@@ -16,11 +16,13 @@ import {
   MoreVertical,
   Flag,
   Users,
-  MessageSquare
+  MessageSquare,
+  Info
 } from "lucide-react";
 import { AppShell } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { ProjectDetailsModal, computeProjectStatus } from "@/components/kanban/project-details-modal";
 import {
   getBoards,
   createBoard,
@@ -59,6 +61,8 @@ interface KanbanBoard {
   userId: number | null;
   name: string;
   color: string;
+  description?: string | null;
+  manualStatus?: string | null;
   createdAt: Date;
 }
 
@@ -129,6 +133,10 @@ export default function KanbanPage() {
   const [isBoardModalOpen, setIsBoardModalOpen] = useState(false);
   const [newBoardName, setNewBoardName] = useState("");
   const [newBoardColor, setNewBoardColor] = useState("emerald");
+
+  // Project Details Modal state
+  const [isProjectDetailsOpen, setIsProjectDetailsOpen] = useState(false);
+  const [selectedBoardForDetails, setSelectedBoardForDetails] = useState<KanbanBoard | null>(null);
 
   // User Auth & Role State
   const [currentUser, setCurrentUser] = useState<{
@@ -580,13 +588,26 @@ export default function KanbanPage() {
                         <span className={cn("size-2.5 rounded-full shrink-0", bCol.bg)} />
                         <span className="truncate">{b.name}</span>
                       </div>
-                      <span
-                        onClick={(e) => handleDeleteBoard(b.id, e)}
-                        className="opacity-0 group-hover:opacity-100 hover:bg-rose-50 text-slate-400 hover:text-rose-600 p-1 rounded-lg transition"
-                        title="Delete Board"
-                      >
-                        <Trash2 className="size-3.5" />
-                      </span>
+                      <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition">
+                        <span
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedBoardForDetails(b);
+                            setIsProjectDetailsOpen(true);
+                          }}
+                          className="hover:bg-amber-50 text-slate-400 hover:text-amber-600 p-1 rounded-lg transition cursor-pointer"
+                          title="Détails & Statut du projet"
+                        >
+                          <Info className="size-3.5" />
+                        </span>
+                        <span
+                          onClick={(e) => handleDeleteBoard(b.id, e)}
+                          className="hover:bg-rose-50 text-slate-400 hover:text-rose-600 p-1 rounded-lg transition cursor-pointer"
+                          title="Delete Board"
+                        >
+                          <Trash2 className="size-3.5" />
+                        </span>
+                      </div>
                     </button>
                   );
                 })
@@ -678,6 +699,10 @@ export default function KanbanPage() {
                     handleDropColumn={handleDropColumn}
                     handleDropCard={handleDropCard}
                     getBoardColor={getBoardColor}
+                    onOpenProjectDetails={(b) => {
+                      setSelectedBoardForDetails(b);
+                      setIsProjectDetailsOpen(true);
+                    }}
                   />
                 </ClientSideSuspense>
               </RoomProvider>
@@ -771,6 +796,28 @@ export default function KanbanPage() {
             </div>
           </div>
         )}
+
+        {/* Project Details Modal */}
+        {selectedBoardForDetails && (
+          <ProjectDetailsModal
+            isOpen={isProjectDetailsOpen}
+            onClose={() => {
+              setIsProjectDetailsOpen(false);
+              setSelectedBoardForDetails(null);
+            }}
+            board={selectedBoardForDetails}
+            columns={selectedBoardForDetails.id === activeBoard?.id ? columns : []}
+            tasks={selectedBoardForDetails.id === activeBoard?.id ? tasks : []}
+            currentUser={currentUser}
+            onBoardUpdated={(updated) => {
+              setBoards((prev) => prev.map((b) => (b.id === updated.id ? updated : b)));
+              if (activeBoard?.id === updated.id) {
+                setActiveBoard(updated);
+              }
+              setSelectedBoardForDetails(updated);
+            }}
+          />
+        )}
       </AppShell>
     </LiveblocksProvider>
   );
@@ -838,6 +885,7 @@ interface CollaborativeBoardContentProps {
   handleDropColumn: (columnId: number) => Promise<void>;
   handleDropCard: (e: React.DragEvent, targetIndex: number, targetColumnId: number) => Promise<void>;
   getBoardColor: (colorId: string) => any;
+  onOpenProjectDetails: (board: KanbanBoard) => void;
 }
 
 function CollaborativeBoardContent({
@@ -900,13 +948,26 @@ function CollaborativeBoardContent({
   handleDragLeaveColumn,
   handleDropColumn,
   handleDropCard,
-  getBoardColor
+  getBoardColor,
+  onOpenProjectDetails
 }: CollaborativeBoardContentProps) {
   // Liveblocks presence & comments hooks
   const others = useOthers();
   const self = useSelf();
   const { threads } = useThreads();
   const createThread = useCreateThread();
+
+  // Project Status & Permission checks
+  const statusInfo = computeProjectStatus(activeBoard, columns, tasks);
+  const StatusIcon = statusInfo.icon;
+
+  const isChefDeProjet =
+    currentUser?.role === "chef_projet" ||
+    currentUser?.role === "superuser" ||
+    currentUser?.role === "pmo" ||
+    activeBoard.userId === currentUser?.id;
+
+  const isHalted = statusInfo.isHalted;
 
   // Local state for board sharing/collaboration modal
   const [isCollaborationOpen, setIsCollaborationOpen] = useState(false);
@@ -978,15 +1039,42 @@ function CollaborativeBoardContent({
     <div className="flex flex-col h-full">
       {/* Board Header Details */}
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-2.5">
-          <span className={cn("size-3.5 rounded-full shadow-sm", getBoardColor(activeBoard.color).bg)} />
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <span className={cn("size-3.5 rounded-full shadow-xs", getBoardColor(activeBoard.color).bg)} />
           <h2 className="text-xl font-bold text-slate-900">{activeBoard.name}</h2>
+
+          {/* Project Status Badge */}
+          <button
+            type="button"
+            onClick={() => onOpenProjectDetails(activeBoard)}
+            className={cn(
+              "inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border shadow-xs transition hover:scale-105 cursor-pointer ml-1",
+              statusInfo.badgeBg,
+              statusInfo.badgeText,
+              statusInfo.badgeBorder
+            )}
+            title="Cliquer pour afficher les détails et le statut du projet"
+          >
+            <StatusIcon className="size-3.5" />
+            <span>{statusInfo.label}</span>
+          </button>
         </div>
 
-        {/* Collaboration & Column Add Options */}
-        <div className="flex items-center gap-2">
+        {/* Collaboration, Details & Column Add Options */}
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Details Button */}
+          <Button
+            type="button"
+            variant="outline"
+            className="h-9 rounded-xl border-amber-200 bg-white/90 text-amber-800 hover:bg-amber-50 font-bold text-xs flex items-center gap-1.5 shadow-xs cursor-pointer"
+            onClick={() => onOpenProjectDetails(activeBoard)}
+          >
+            <Info className="size-4 text-amber-500" />
+            <span>Détails & Statut</span>
+          </Button>
+
           {/* Active Collaborators Avatars */}
-          <div className="flex items-center gap-3 bg-white/50 border border-slate-100/80 rounded-2xl px-3 py-1.5 shadow-sm backdrop-blur-sm mr-1">
+          <div className="flex items-center gap-3 bg-white/50 border border-slate-100/80 rounded-2xl px-3 py-1.5 shadow-xs backdrop-blur-sm mr-1">
             <div className="flex items-center -space-x-2 overflow-hidden">
               {self?.info && (
                 <div
@@ -1022,7 +1110,7 @@ function CollaborativeBoardContent({
             <Button
               type="button"
               variant="outline"
-              className="h-7.5 rounded-lg border-amber-200 bg-white/90 text-amber-700 hover:bg-amber-50 font-bold text-[10px] flex items-center gap-1 shadow-sm px-2.5 cursor-pointer"
+              className="h-7.5 rounded-lg border-amber-200 bg-white/90 text-amber-700 hover:bg-amber-50 font-bold text-[10px] flex items-center gap-1 shadow-xs px-2.5 cursor-pointer"
               onClick={() => setIsCollaborationOpen(true)}
             >
               <Users className="size-3 text-amber-500" />
@@ -1033,7 +1121,7 @@ function CollaborativeBoardContent({
           {/* Add Column Option */}
           {columns.length < 5 ? (
             isAddingColumn ? (
-              <form onSubmit={handleCreateColumn} className="flex items-center gap-1.5 bg-white p-1 rounded-xl border border-slate-200 shadow-sm">
+              <form onSubmit={handleCreateColumn} className="flex items-center gap-1.5 bg-white p-1 rounded-xl border border-slate-200 shadow-xs">
                 <input
                   type="text"
                   required
@@ -1079,6 +1167,36 @@ function CollaborativeBoardContent({
         </div>
       </div>
 
+      {/* Halted / Disabled Project Notice Banner */}
+      {isHalted && (
+        <div
+          className={cn(
+            "mb-4 p-4 rounded-2xl border flex items-center justify-between gap-3 shadow-xs animate-fade-in",
+            statusInfo.key === "on_hold"
+              ? "bg-amber-50/90 border-amber-300 text-amber-900"
+              : "bg-rose-50/90 border-rose-300 text-rose-900"
+          )}
+        >
+          <div className="flex items-center gap-3">
+            <StatusIcon className="size-5 shrink-0" />
+            <div>
+              <h4 className="text-xs font-bold uppercase tracking-wider">{statusInfo.alertTitle}</h4>
+              <p className="text-xs font-medium mt-0.5">
+                {statusInfo.alertMessage} {!isChefDeProjet && "— Ce tableau est grisé et désactivé pour les membres."}
+              </p>
+            </div>
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => onOpenProjectDetails(activeBoard)}
+            className="h-8 px-3 rounded-xl font-bold text-xs bg-white text-slate-900 border border-slate-200 hover:bg-slate-50 shadow-xs shrink-0 cursor-pointer"
+          >
+            Détails du projet
+          </Button>
+        </div>
+      )}
+
       {/* Columns Container */}
       {loading ? (
         <div className="flex flex-col items-center justify-center p-12 min-h-[300px]">
@@ -1086,7 +1204,12 @@ function CollaborativeBoardContent({
           <p className="text-sm font-semibold text-slate-500 mt-2">Syncing Kanban Board...</p>
         </div>
       ) : (
-        <div className="flex gap-4 overflow-x-auto pb-4 items-start select-none scrollbar-thin">
+        <div
+          className={cn(
+            "flex gap-4 overflow-x-auto pb-4 items-start select-none scrollbar-thin transition-all duration-300 relative",
+            isHalted && !isChefDeProjet && "opacity-40 pointer-events-none select-none filter blur-[0.5px]"
+          )}
+        >
           {columns.length === 0 ? (
             <div className="flex-1 flex flex-col items-center justify-center border-2 border-dashed border-slate-200/80 rounded-[2rem] bg-white/40 p-12 text-center min-h-[300px]">
               <AlertCircle className="size-8 text-amber-500 mb-2" />

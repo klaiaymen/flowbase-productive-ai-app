@@ -33,6 +33,8 @@ export async function getBoards() {
           userId: kanbanBoards.userId,
           name: kanbanBoards.name,
           color: kanbanBoards.color,
+          description: kanbanBoards.description,
+          manualStatus: kanbanBoards.manualStatus,
           createdAt: kanbanBoards.createdAt,
         })
         .from(kanbanBoards)
@@ -44,6 +46,8 @@ export async function getBoards() {
           userId: kanbanBoards.userId,
           name: kanbanBoards.name,
           color: kanbanBoards.color,
+          description: kanbanBoards.description,
+          manualStatus: kanbanBoards.manualStatus,
           createdAt: kanbanBoards.createdAt,
         })
         .from(kanbanBoards)
@@ -56,6 +60,8 @@ export async function getBoards() {
           userId: kanbanBoards.userId,
           name: kanbanBoards.name,
           color: kanbanBoards.color,
+          description: kanbanBoards.description,
+          manualStatus: kanbanBoards.manualStatus,
           createdAt: kanbanBoards.createdAt,
         })
         .from(kanbanBoards)
@@ -539,3 +545,139 @@ export async function removeShare(boardId: number, shareId: number) {
     throw new Error(error.message || "Failed to remove share");
   }
 }
+
+export async function updateBoardDetails(
+  boardId: number,
+  data: { description?: string; manualStatus?: string | null }
+) {
+  try {
+    const user = await syncCurrentUser();
+    if (!user) throw new AuthError("You must be signed in to edit board details.");
+
+    const [board] = await db
+      .select()
+      .from(kanbanBoards)
+      .where(eq(kanbanBoards.id, boardId));
+
+    if (!board) throw new Error("Board not found.");
+
+    const isAllowedRole =
+      user.role === "chef_projet" ||
+      user.role === "superuser" ||
+      user.role === "pmo" ||
+      board.userId === user.id;
+
+    if (!isAllowedRole) {
+      throw new Error("Only Chef de Projet, PMO, or Superuser can modify project details and manual status.");
+    }
+
+    const updatePayload: Record<string, any> = {};
+    if (data.description !== undefined) {
+      updatePayload.description = data.description;
+    }
+    if (data.manualStatus !== undefined) {
+      updatePayload.manualStatus = data.manualStatus;
+    }
+
+    const [updatedBoard] = await db
+      .update(kanbanBoards)
+      .set(updatePayload)
+      .where(eq(kanbanBoards.id, boardId))
+      .returning({
+        id: kanbanBoards.id,
+        userId: kanbanBoards.userId,
+        name: kanbanBoards.name,
+        color: kanbanBoards.color,
+        description: kanbanBoards.description,
+        manualStatus: kanbanBoards.manualStatus,
+        createdAt: kanbanBoards.createdAt,
+      });
+
+    return updatedBoard;
+  } catch (error: any) {
+    console.error("Error in updateBoardDetails:", error);
+    throw new Error(error.message || "Failed to update board details");
+  }
+}
+
+export async function getBoardMembers(boardId: number) {
+  try {
+    const user = await syncCurrentUser();
+    if (!user) return [];
+
+    const shares = await db
+      .select()
+      .from(kanbanBoardShares)
+      .where(eq(kanbanBoardShares.boardId, boardId));
+
+    const [board] = await db
+      .select({ userId: kanbanBoards.userId })
+      .from(kanbanBoards)
+      .where(eq(kanbanBoards.id, boardId));
+
+    let ownerEmail: string | null = null;
+    let ownerName: string | null = null;
+
+    if (board?.userId) {
+      const [owner] = await db.select().from(users).where(eq(users.id, board.userId));
+      if (owner) {
+        ownerEmail = owner.email;
+        ownerName = owner.name;
+      }
+    }
+
+    const cols = await db
+      .select({ id: kanbanColumns.id })
+      .from(kanbanColumns)
+      .where(eq(kanbanColumns.boardId, boardId));
+
+    const colIds = cols.map((c) => c.id);
+    const assignedEmailsSet = new Set<string>();
+
+    if (colIds.length > 0) {
+      const boardTasks = await db.select({ assignedTo: kanbanTasks.assignedTo }).from(kanbanTasks);
+      for (const t of boardTasks) {
+        if (t.assignedTo && t.assignedTo.trim()) {
+          assignedEmailsSet.add(t.assignedTo.trim().toLowerCase());
+        }
+      }
+    }
+
+    const membersMap = new Map<string, { email: string; name: string | null; roleLabel: string }>();
+
+    if (ownerEmail) {
+      membersMap.set(ownerEmail.toLowerCase(), {
+        email: ownerEmail,
+        name: ownerName || ownerEmail.split("@")[0],
+        roleLabel: "Chef de Projet / Creator",
+      });
+    }
+
+    for (const s of shares) {
+      const emailLower = s.email.toLowerCase();
+      if (!membersMap.has(emailLower)) {
+        membersMap.set(emailLower, {
+          email: s.email,
+          name: s.email.split("@")[0],
+          roleLabel: "Collaborateur",
+        });
+      }
+    }
+
+    for (const emailLower of assignedEmailsSet) {
+      if (!membersMap.has(emailLower)) {
+        membersMap.set(emailLower, {
+          email: emailLower,
+          name: emailLower.split("@")[0],
+          roleLabel: "Assigné aux tâches",
+        });
+      }
+    }
+
+    return Array.from(membersMap.values());
+  } catch (error) {
+    console.error("Error in getBoardMembers:", error);
+    return [];
+  }
+}
+
