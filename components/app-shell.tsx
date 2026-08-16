@@ -17,6 +17,7 @@ import {
   Settings,
   Sparkles,
   Shield,
+  Globe,
   Pin,
   Flame, Wallet, Utensils, GraduationCap, CheckSquare, Activity, Target,
 } from "lucide-react";
@@ -107,6 +108,13 @@ export function AppShell({ children, noPadding }: { children: React.ReactNode; n
           icon: CalendarDays,
           color: "text-orange-500",
           iconBg: "bg-orange-100",
+        },
+        {
+          label: "Landing Page",
+          href: "/landing",
+          icon: Globe,
+          color: "text-emerald-500",
+          iconBg: "bg-emerald-100",
         },
         {
           label: "Settings",
