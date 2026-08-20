@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import Groq from "groq-sdk";
+import { GROQ_LARGE_MODEL } from "@/lib/ai/groq-models";
 
 export interface HighLevelElement {
   id: string;
@@ -301,7 +302,7 @@ Rules:
     const userMessage = `Diagram Type: ${diagramType}\nUser Prompt: ${prompt}`;
 
     const completion = await groq.chat.completions.create({
-      model: "llama-3.3-70b-versatile",
+      model: GROQ_LARGE_MODEL,
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userMessage },

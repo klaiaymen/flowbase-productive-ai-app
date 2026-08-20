@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import Groq from "groq-sdk";
+import { GROQ_LARGE_MODEL } from "@/lib/ai/groq-models";
 
 export const maxDuration = 45;
 
@@ -108,7 +109,7 @@ export async function POST(req: NextRequest) {
     const groq = new Groq({ apiKey });
 
     const completion = await groq.chat.completions.create({
-      model: "llama-3.3-70b-versatile",
+      model: GROQ_LARGE_MODEL,
       messages: [
         { role: "system", content: systemPrompt },
         ...messages.map((m: { role: string; content: string }) => ({

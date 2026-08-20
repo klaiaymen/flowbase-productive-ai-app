@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import Groq from "groq-sdk";
+import { GROQ_LARGE_MODEL } from "@/lib/ai/groq-models";
 
 export const maxDuration = 30; // 30s timeout
 
@@ -248,7 +249,7 @@ Given a user app idea prompt, you MUST return a single JSON object containing:
 IMPORTANT: Return ONLY raw valid JSON. No markdown codeblocks (\`\`\`json), no preamble text.`;
 
       const completion = await groq.chat.completions.create({
-        model: "llama-3.3-70b-versatile",
+        model: GROQ_LARGE_MODEL,
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: `Create a single-page app layout JSON for: "${prompt.trim()}"` },
