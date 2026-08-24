@@ -1,9 +1,15 @@
 "use server";
 
 import { db, spaces, pages, spaceMembers, users, pageComments } from "@/db";
-import { eq, and, desc, sql } from "drizzle-orm";
+import { eq, and, desc, sql, inArray } from "drizzle-orm";
 import { auth } from "@clerk/nextjs/server";
 import { revalidatePath } from "next/cache";
+import {
+  requirePageAccess,
+  requireSpaceAccess,
+  requireSpaceOwner,
+  requireSpaceUser,
+} from "@/lib/spaces/access";
 
 // ─── Auth helper ─────────────────────────────────────────────────────────────
 
@@ -17,12 +23,33 @@ async function requireAuth(): Promise<string> {
 
 export async function getSpaces() {
   try {
-    const clerkUserId = await requireAuth();
-    return await db
+    const { userId, email } = await requireSpaceUser();
+
+    const ownedSpaces = await db
       .select()
       .from(spaces)
-      .where(eq(spaces.clerkUserId, clerkUserId))
+      .where(eq(spaces.clerkUserId, userId))
       .orderBy(desc(spaces.updatedAt));
+
+    let sharedSpaces: typeof ownedSpaces = [];
+    if (email) {
+      const memberRows = await db
+        .select({ spaceId: spaceMembers.spaceId })
+        .from(spaceMembers)
+        .where(eq(spaceMembers.email, email));
+
+      const sharedIds = memberRows.map((member) => member.spaceId);
+      if (sharedIds.length > 0) {
+        sharedSpaces = await db.select().from(spaces).where(inArray(spaces.id, sharedIds));
+      }
+    }
+
+    const deduped = new Map<number, (typeof ownedSpaces)[number]>();
+    [...ownedSpaces, ...sharedSpaces].forEach((space) => deduped.set(space.id, space));
+
+    return Array.from(deduped.values()).sort(
+      (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+    );
   } catch (error) {
     console.error("Error in getSpaces:", error);
     return [];
@@ -31,13 +58,8 @@ export async function getSpaces() {
 
 export async function getSpacesWithPageCount() {
   try {
-    const clerkUserId = await requireAuth();
-
-    const allSpaces = await db
-      .select()
-      .from(spaces)
-      .where(eq(spaces.clerkUserId, clerkUserId))
-      .orderBy(desc(spaces.updatedAt));
+    const { userId } = await requireSpaceUser();
+    const allSpaces = await getSpaces();
 
     const spacesWithCount = await Promise.all(
       allSpaces.map(async (space) => {
@@ -55,6 +77,7 @@ export async function getSpacesWithPageCount() {
           ...space,
           pageCount: countResult?.count ?? 0,
           memberEmails: memberRows.map((m) => m.email),
+          accessLevel: space.clerkUserId === userId ? "owner" : "member",
         };
       })
     );
@@ -105,12 +128,12 @@ export async function updateSpace(
   }>
 ) {
   try {
-    const clerkUserId = await requireAuth();
+    await requireSpaceOwner(spaceId);
 
     const [updated] = await db
       .update(spaces)
       .set({ ...data, updatedAt: new Date() })
-      .where(and(eq(spaces.id, spaceId), eq(spaces.clerkUserId, clerkUserId)))
+      .where(eq(spaces.id, spaceId))
       .returning();
 
     revalidatePath("/spaces");
@@ -135,11 +158,11 @@ export async function unarchiveSpace(spaceId: number) {
 
 export async function deleteSpace(spaceId: number) {
   try {
-    const clerkUserId = await requireAuth();
+    await requireSpaceOwner(spaceId);
 
     await db
       .delete(spaces)
-      .where(and(eq(spaces.id, spaceId), eq(spaces.clerkUserId, clerkUserId)));
+      .where(eq(spaces.id, spaceId));
 
     revalidatePath("/spaces");
     return { success: true };
@@ -151,19 +174,14 @@ export async function deleteSpace(spaceId: number) {
 
 export async function duplicateSpace(spaceId: number) {
   try {
-    const clerkUserId = await requireAuth();
-
-    const [original] = await db
-      .select()
-      .from(spaces)
-      .where(and(eq(spaces.id, spaceId), eq(spaces.clerkUserId, clerkUserId)));
+    const { space: original, user } = await requireSpaceOwner(spaceId);
 
     if (!original) throw new Error("Space not found");
 
     const [newSpace] = await db
       .insert(spaces)
       .values({
-        clerkUserId,
+        clerkUserId: user.userId,
         name: `${original.name} (Copy)`,
         description: original.description,
         color: original.color,
@@ -180,7 +198,7 @@ export async function duplicateSpace(spaceId: number) {
       await db.insert(pages).values(
         originalPages.map((p) => ({
           spaceId: newSpace.id,
-          clerkUserId,
+          clerkUserId: user.userId,
           name: p.name,
           description: p.description,
           template: p.template,
@@ -201,7 +219,7 @@ export async function duplicateSpace(spaceId: number) {
 
 export async function getPages(spaceId: number) {
   try {
-    await requireAuth();
+    await requireSpaceAccess(spaceId);
 
     return await db
       .select()
@@ -239,7 +257,7 @@ export async function createPage(data: {
   description?: string;
 }) {
   try {
-    const clerkUserId = await requireAuth();
+    const { user } = await requireSpaceAccess(data.spaceId);
     const templateKey = data.template || "blank";
     const initialContent = getTemplateInitialContent(templateKey, data.name.trim());
 
@@ -247,7 +265,7 @@ export async function createPage(data: {
       .insert(pages)
       .values({
         spaceId: data.spaceId,
-        clerkUserId,
+        clerkUserId: user.userId,
         name: data.name.trim(),
         description: data.description?.trim() || "",
         template: templateKey,
@@ -285,11 +303,15 @@ export async function updatePage(
   }>
 ) {
   try {
-    const clerkUserId = await requireAuth();
+    const { user } = await requirePageAccess(pageId);
+
+    if (data.spaceId !== undefined) {
+      await requireSpaceAccess(data.spaceId);
+    }
 
     const [updated] = await db
       .update(pages)
-      .set({ ...data, clerkUserId, updatedAt: new Date() })
+      .set({ ...data, clerkUserId: user.userId, updatedAt: new Date() })
       .where(eq(pages.id, pageId))
       .returning();
 
@@ -311,12 +333,7 @@ export async function archivePage(pageId: number) {
 
 export async function duplicatePage(pageId: number) {
   try {
-    const clerkUserId = await requireAuth();
-
-    const [original] = await db
-      .select()
-      .from(pages)
-      .where(eq(pages.id, pageId));
+    const { page: original, user } = await requirePageAccess(pageId);
 
     if (!original) throw new Error("Page not found");
 
@@ -324,7 +341,7 @@ export async function duplicatePage(pageId: number) {
       .insert(pages)
       .values({
         spaceId: original.spaceId,
-        clerkUserId,
+        clerkUserId: user.userId,
         name: `${original.name} (Copy)`,
         description: original.description,
         template: original.template,
@@ -342,7 +359,7 @@ export async function duplicatePage(pageId: number) {
 
 export async function deletePage(pageId: number) {
   try {
-    await requireAuth();
+    await requirePageAccess(pageId);
 
     await db.delete(pages).where(eq(pages.id, pageId));
 
@@ -358,7 +375,7 @@ export async function deletePage(pageId: number) {
 
 export async function getSpaceMembers(spaceId: number) {
   try {
-    const clerkUserId = await requireAuth();
+    await requireSpaceAccess(spaceId);
 
     const members = await db
       .select()
@@ -390,15 +407,7 @@ export async function getSpaceMembers(spaceId: number) {
 
 export async function addSpaceMember(spaceId: number, email: string) {
   try {
-    const clerkUserId = await requireAuth();
-
-    // Verify the user owns this space
-    const [space] = await db
-      .select()
-      .from(spaces)
-      .where(and(eq(spaces.id, spaceId), eq(spaces.clerkUserId, clerkUserId)));
-
-    if (!space) throw new Error("Only the space owner can invite collaborators");
+    await requireSpaceOwner(spaceId);
 
     const cleanEmail = email.trim().toLowerCase();
     if (!cleanEmail) throw new Error("Email is required");
@@ -434,14 +443,7 @@ export async function addSpaceMember(spaceId: number, email: string) {
 
 export async function removeSpaceMember(spaceId: number, memberId: number) {
   try {
-    const clerkUserId = await requireAuth();
-
-    const [space] = await db
-      .select()
-      .from(spaces)
-      .where(and(eq(spaces.id, spaceId), eq(spaces.clerkUserId, clerkUserId)));
-
-    if (!space) throw new Error("Only the space owner can remove collaborators");
+    await requireSpaceOwner(spaceId);
 
     await db
       .delete(spaceMembers)
@@ -456,15 +458,8 @@ export async function removeSpaceMember(spaceId: number, memberId: number) {
 
 export async function movePage(pageId: number, targetSpaceId: number) {
   try {
-    const clerkUserId = await requireAuth();
-
-    // Verify user owns target space
-    const [targetSpace] = await db
-      .select()
-      .from(spaces)
-      .where(and(eq(spaces.id, targetSpaceId), eq(spaces.clerkUserId, clerkUserId)));
-
-    if (!targetSpace) throw new Error("Target space not found");
+    await requirePageAccess(pageId);
+    await requireSpaceAccess(targetSpaceId);
 
     const [updated] = await db
       .update(pages)
@@ -484,7 +479,7 @@ export async function movePage(pageId: number, targetSpaceId: number) {
 
 export async function getPageComments(pageId: number) {
   try {
-    await requireAuth();
+    await requirePageAccess(pageId);
 
     const comments = await db
       .select()
@@ -501,14 +496,14 @@ export async function getPageComments(pageId: number) {
 
 export async function addPageComment(pageId: number, content: string) {
   try {
-    const clerkUserId = await requireAuth();
+    const { user } = await requirePageAccess(pageId);
     if (!content.trim()) throw new Error("Comment content cannot be empty");
 
     const [comment] = await db
       .insert(pageComments)
       .values({
         pageId,
-        clerkUserId,
+        clerkUserId: user.userId,
         content: content.trim(),
       })
       .returning();
@@ -529,11 +524,11 @@ export async function addPageComment(pageId: number, content: string) {
 
 export async function deletePageComment(commentId: number, pageId: number) {
   try {
-    const clerkUserId = await requireAuth();
+    const { user } = await requirePageAccess(pageId);
 
     await db
       .delete(pageComments)
-      .where(and(eq(pageComments.id, commentId), eq(pageComments.clerkUserId, clerkUserId)));
+      .where(and(eq(pageComments.id, commentId), eq(pageComments.clerkUserId, user.userId)));
 
     // Decrement commentsCount in page
     const [pageRow] = await db.select({ count: pages.commentsCount }).from(pages).where(eq(pages.id, pageId));
