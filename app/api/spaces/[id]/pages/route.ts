@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import { db, pages, spaces } from "@/db";
 import { and, desc, eq } from "drizzle-orm";
+import { requireSpaceAccess, statusFromError } from "@/lib/spaces/access";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -15,52 +16,52 @@ function initialContent(template: string, name: string) {
 }
 
 export async function GET(_request: NextRequest, context: RouteContext) {
-  const { userId } = await auth();
-  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  try {
+    const { id } = await context.params;
+    const spaceId = Number.parseInt(id, 10);
+    if (Number.isNaN(spaceId)) return NextResponse.json({ error: "Invalid space id" }, { status: 400 });
 
-  const { id } = await context.params;
-  const spaceId = Number.parseInt(id, 10);
-  if (Number.isNaN(spaceId)) return NextResponse.json({ error: "Invalid space id" }, { status: 400 });
+    await requireSpaceAccess(spaceId);
 
-  const result = await db
-    .select()
-    .from(pages)
-    .where(and(eq(pages.spaceId, spaceId), eq(pages.isArchived, false)))
-    .orderBy(desc(pages.updatedAt));
+    const result = await db
+      .select()
+      .from(pages)
+      .where(and(eq(pages.spaceId, spaceId), eq(pages.isArchived, false)))
+      .orderBy(desc(pages.updatedAt));
 
-  return NextResponse.json(result);
+    return NextResponse.json(result);
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Failed to load pages" }, { status: statusFromError(error) });
+  }
 }
 
 export async function POST(request: NextRequest, context: RouteContext) {
-  const { userId } = await auth();
-  if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  try {
+    const { id } = await context.params;
+    const spaceId = Number.parseInt(id, 10);
+    if (Number.isNaN(spaceId)) return NextResponse.json({ error: "Invalid space id" }, { status: 400 });
 
-  const { id } = await context.params;
-  const spaceId = Number.parseInt(id, 10);
-  if (Number.isNaN(spaceId)) return NextResponse.json({ error: "Invalid space id" }, { status: 400 });
+    const { user } = await requireSpaceAccess(spaceId);
 
-  const [space] = await db
-    .select()
-    .from(spaces)
-    .where(and(eq(spaces.id, spaceId), eq(spaces.clerkUserId, userId)));
-  if (!space) return NextResponse.json({ error: "Space not found" }, { status: 404 });
+    const body = await request.json();
+    if (!body.name) return NextResponse.json({ error: "name is required" }, { status: 400 });
 
-  const body = await request.json();
-  if (!body.name) return NextResponse.json({ error: "name is required" }, { status: 400 });
+    const template = body.template || "blank";
+    const [page] = await db
+      .insert(pages)
+      .values({
+        spaceId,
+        clerkUserId: user.userId,
+        name: body.name.trim(),
+        description: body.description?.trim() || "",
+        template,
+        content: body.content ?? initialContent(template, body.name.trim()),
+      })
+      .returning();
 
-  const template = body.template || "blank";
-  const [page] = await db
-    .insert(pages)
-    .values({
-      spaceId,
-      clerkUserId: userId,
-      name: body.name.trim(),
-      description: body.description?.trim() || "",
-      template,
-      content: body.content ?? initialContent(template, body.name.trim()),
-    })
-    .returning();
-
-  await db.update(spaces).set({ updatedAt: new Date() }).where(eq(spaces.id, spaceId));
-  return NextResponse.json(page, { status: 201 });
+    await db.update(spaces).set({ updatedAt: new Date() }).where(eq(spaces.id, spaceId));
+    return NextResponse.json(page, { status: 201 });
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Failed to create page" }, { status: statusFromError(error) });
+  }
 }
