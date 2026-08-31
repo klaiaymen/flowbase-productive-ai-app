@@ -110,6 +110,16 @@ export const whiteboards = pgTable("whiteboards", {
 export type Whiteboard = typeof whiteboards.$inferSelect;
 export type NewWhiteboard = typeof whiteboards.$inferInsert;
 
+export const whiteboardShares = pgTable("whiteboard_shares", {
+  id: serial("id").primaryKey(),
+  whiteboardId: integer("whiteboard_id").references(() => whiteboards.id, { onDelete: "cascade" }).notNull(),
+  email: text("email").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export type WhiteboardShare = typeof whiteboardShares.$inferSelect;
+export type NewWhiteboardShare = typeof whiteboardShares.$inferInsert;
+
 // ─── Spaces & Pages ───────────────────────────────────────────────────────────
 
 export const spaces = pgTable("spaces", {

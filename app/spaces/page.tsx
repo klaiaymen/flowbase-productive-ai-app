@@ -8,6 +8,9 @@ export const metadata: Metadata = {
   description: "Organize your documents using Spaces as top-level folders and Pages as individual documents.",
 };
 
+export const dynamic = "force-dynamic";
+
+
 export default async function SpacesPage() {
   const spacesRaw = await getSpacesWithPageCount();
 

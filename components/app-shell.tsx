@@ -159,9 +159,11 @@ export function AppShell({ children, noPadding }: { children: React.ReactNode; n
               isCollapsed && "justify-center px-0",
             )}
           >
-            <div className="grid size-9 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-emerald-400 via-cyan-400 to-fuchsia-500 text-white shadow-lg shadow-cyan-200/70">
-              <Sparkles className="size-[18px]" aria-hidden="true" />
-            </div>
+            <img
+              src="/logo.png"
+              alt="Tunisie Telecom Logo"
+              className="size-9 shrink-0 object-contain drop-shadow-sm"
+            />
             {!isCollapsed && (
               <div className="min-w-0">
                 <p className="truncate text-[13px] font-bold text-slate-950">

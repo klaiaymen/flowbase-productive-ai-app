@@ -2,79 +2,228 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import Groq from "groq-sdk";
 import { GROQ_LARGE_MODEL } from "@/lib/ai/groq-models";
+import {
+  db,
+  spaces,
+  pages,
+  kanbanBoards,
+  kanbanColumns,
+  kanbanTasks,
+  notes,
+  whiteboards,
+  aiTemplates,
+} from "@/db";
+import { eq, inArray, desc, and } from "drizzle-orm";
 
 export const maxDuration = 45;
 
-const SYSTEM_PROMPT = `You are Flowbase AI — the intelligent command center for the Flowbase productivity app. You help users manage their workspace through natural conversation. You are warm, concise, and action-oriented.
+async function getUserDatabaseSummary(clerkUserId: string) {
+  try {
+    // 1. Fetch Spaces
+    const userSpaces = await db
+      .select({
+        id: spaces.id,
+        name: spaces.name,
+        description: spaces.description,
+        color: spaces.color,
+        createdAt: spaces.createdAt,
+      })
+      .from(spaces)
+      .where(eq(spaces.clerkUserId, clerkUserId))
+      .orderBy(desc(spaces.updatedAt));
 
-## Your Capabilities
+    const spaceIds = userSpaces.map((s) => s.id);
 
-You can perform the following ACTIONS on behalf of the user:
+    // 2. Fetch Pages for those spaces
+    let userPages: any[] = [];
+    if (spaceIds.length > 0) {
+      userPages = await db
+        .select({
+          id: pages.id,
+          spaceId: pages.spaceId,
+          name: pages.name,
+          description: pages.description,
+          template: pages.template,
+          createdAt: pages.createdAt,
+        })
+        .from(pages)
+        .where(and(inArray(pages.spaceId, spaceIds), eq(pages.isArchived, false)))
+        .orderBy(desc(pages.updatedAt));
+    }
 
-1. **create_task** — Create a Kanban task in a specific board
-   - Required fields: title (string), boardId (number), priority ("low" | "medium" | "high")
-   - Optional fields: description, dueDate (YYYY-MM-DD format)
-   - If the user has multiple boards and doesn't specify which one → ALWAYS ask which board they want before creating.
+    // 3. Fetch Kanban Boards & Tasks
+    const userBoards = await db
+      .select({
+        id: kanbanBoards.id,
+        name: kanbanBoards.name,
+        color: kanbanBoards.color,
+        description: kanbanBoards.description,
+      })
+      .from(kanbanBoards)
+      .orderBy(desc(kanbanBoards.createdAt));
 
-2. **create_board** — Create a new Kanban board
-   - Required fields: name (string), color (one of: "amber", "violet", "emerald", "sky", "rose", "cyan", "indigo", "fuchsia")
+    const boardIds = userBoards.map((b) => b.id);
+    let recentTasks: string[] = [];
 
-3. **add_calendar_item** — Add an event/reminder/task to the calendar
-   - Required fields: title (string), type ("task" | "reminder"), category ("work" | "learning" | "urgent" | "ideas" | "personal")
-   - Optional fields: date (YYYY-MM-DD), time (HH:MM in 24h format), description
-   - If date is unclear, compute from context (e.g., "tomorrow" → tomorrow's date) or ask for it.
+    if (boardIds.length > 0) {
+      const cols = await db
+        .select({ id: kanbanColumns.id })
+        .from(kanbanColumns)
+        .where(inArray(kanbanColumns.boardId, boardIds));
 
-4. **create_note** — Create a new note
-   - Required fields: title (string)
-   - Optional fields: content (plain text or HTML)
+      const colIds = cols.map((c) => c.id);
+      if (colIds.length > 0) {
+        const tasks = await db
+          .select({ title: kanbanTasks.title, priority: kanbanTasks.priority })
+          .from(kanbanTasks)
+          .where(inArray(kanbanTasks.columnId, colIds))
+          .limit(10);
+        recentTasks = tasks.map((t) => `"${t.title}" (${t.priority})`);
+      }
+    }
 
-5. **create_whiteboard** — Create a new whiteboard
-   - Required fields: name (string)
-   - Optional fields: color ("emerald" | "violet" | "sky" | "amber" | "rose" | "indigo")
+    // 4. Fetch Notes
+    const userNotes = await db
+      .select({ id: notes.id, title: notes.title })
+      .from(notes)
+      .where(and(eq(notes.clerkUserId, clerkUserId), eq(notes.isTrashed, false)))
+      .limit(10);
 
-6. **generate_template** — Generate an AI Template Builder app
-   - Required fields: prompt (string) — the theme/idea for the mini app
+    // 5. Fetch Whiteboards
+    const userWhiteboards = await db
+      .select({ id: whiteboards.id, name: whiteboards.name })
+      .from(whiteboards)
+      .where(eq(whiteboards.clerkUserId, clerkUserId))
+      .limit(10);
 
-7. **navigate** — Navigate the user to a page in the app
-   - Required fields: href (one of: "/", "/kanban", "/calendar", "/notes", "/whiteboard", "/templates", "/spaces", "/admin")
-   - Use this when user says "go to", "open", "show me" etc.
+    const spacesSummary =
+      userSpaces.length > 0
+        ? userSpaces
+            .map((s) => {
+              const pList = userPages
+                .filter((p) => p.spaceId === s.id)
+                .map((p) => `"${p.name}"`);
+              return `- Espace/Projet [ID: ${s.id}]: "${s.name}" (Description: "${
+                s.description || "Aucune"
+              }", Pages associées: ${pList.length > 0 ? pList.join(", ") : "Aucune"})`;
+            })
+            .join("\n")
+        : "Aucun espace ou projet créé pour le moment.";
 
-## Response Format
+    const pagesSummary =
+      userPages.length > 0
+        ? userPages
+            .map(
+              (p) =>
+                `- Page [ID: ${p.id}, Espace ID: ${p.spaceId}]: "${p.name}" (Template: ${p.template})`
+            )
+            .join("\n")
+        : "Aucune page de documentation.";
 
-You MUST respond with a valid JSON object in one of these two formats:
+    const boardsSummary =
+      userBoards.length > 0
+        ? userBoards.map((b) => `- Tableau Kanban [ID: ${b.id}]: "${b.name}"`).join("\n")
+        : "Aucun tableau Kanban.";
 
-### Format A — Conversational reply (no action, or asking for clarification):
+    return `
+=== DONNÉES RÉELLES EN TEMPS RÉEL (BASE DE DONNÉES POSTGRESQL) ===
+📌 ESPACES DE TRAVAIL & PROJETS (${userSpaces.length}) :
+${spacesSummary}
+
+📄 PAGES DE DOCUMENTATION (${userPages.length}) :
+${pagesSummary}
+
+📊 TABLEAUX KANBAN (${userBoards.length}) :
+${boardsSummary}
+(Tâches récentes: ${recentTasks.length > 0 ? recentTasks.join(", ") : "Aucune tâche"})
+
+📝 NOTES PERSONNELLES : ${
+      userNotes.length > 0 ? userNotes.map((n) => `"${n.title}"`).join(", ") : "Aucune note"
+    }
+🎨 TABLEAUX BLANCS : ${
+      userWhiteboards.length > 0
+        ? userWhiteboards.map((w) => `"${w.name}"`).join(", ")
+        : "Aucun tableau blanc"
+    }
+`;
+  } catch (err) {
+    console.error("Error fetching user database summary for AI:", err);
+    return "Informations de la base de données non disponibles actuellement.";
+  }
+}
+
+const SYSTEM_PROMPT = `You are Flowbase AI — the intelligent, autonomous command center for the Flowbase productivity app. You answer fluently in French or English according to the user's language.
+
+## Your Core Powers:
+
+1. **Real-time Database Queries & Direct Answers**:
+   - You have REAL-TIME ACCESS to the user's database records in \`{{USER_DATABASE_CONTEXT}}\`.
+   - When the user asks for their projects, spaces, tasks, pages, or general status (e.g., "donnez moi la liste de mes projets", "quelles sont mes pages", "show my projects"), read \`{{USER_DATABASE_CONTEXT}}\` and provide a clear, friendly, well-formatted Markdown summary with IDs, names, descriptions, and page counts.
+
+2. **Autonomous Project Planning & Execution**:
+   - When the user asks for a complete work plan or methodology for a new project (e.g. "donnez moi un plan de travail complet pour un projet de gestion de stock"), you MUST:
+     a) Detail a complete step-by-step methodology and action plan in French in the \`reply\` text.
+     b) Trigger the **\`create_full_project\`** action to AUTOMATICALLY create the project resources in Flowbase (Space, Documentation Page with full plan, Kanban Board, and key initial tasks).
+
+3. **Supported Actions**:
+
+- **create_full_project** — Autonomous creation of a complete project space + plan page + kanban board + initial tasks.
+  Payload format:
+  \`\`\`json
+  {
+    "spaceName": "Gestion de Stock",
+    "spaceDescription": "Espace de gestion d'inventaire, de suivi de stock et d'approvisionnement",
+    "spaceColor": "emerald",
+    "pageName": "Plan de Travail & Procédures Stock",
+    "pageContent": "<h1>📦 Plan de Travail - Gestion de Stock</h1><hr/><h2>1. Inventaire Initial</h2><p>Description...</p>",
+    "boardName": "Tableau de Stock & Commandes",
+    "boardColor": "emerald",
+    "tasks": [
+      { "title": "Inventaire initial des produits", "priority": "high" },
+      { "title": "Configuration des seuils de réapprovisionnement", "priority": "high" },
+      { "title": "Mise en place de la procédure de réception", "priority": "medium" }
+    ]
+  }
+  \`\`\`
+
+- **create_space** — Create a workspace (payload: { "name": string, "description"?: string, "color"?: string })
+- **create_page** — Create a page (payload: { "spaceName"?: string, "spaceId"?: number, "name": string, "description"?: string, "content"?: string })
+- **create_task** — Create a Kanban task (payload: { "title": string, "boardId": number, "priority": "low" | "medium" | "high", "description"?: string })
+- **create_board** — Create a Kanban board (payload: { "name": string, "color": string })
+- **add_calendar_item** — Add calendar item (payload: { "title": string, "type": "task"|"reminder", "category": string, "date"?: string })
+- **create_note** — Create a note (payload: { "title": string, "content"?: string })
+- **create_whiteboard** — Create a whiteboard (payload: { "name": string, "color"?: string })
+- **generate_template** — Generate an AI app template (payload: { "prompt": string })
+- **navigate** — Navigate to route (payload: { "href": string })
+
+## Response Format:
+
+You MUST respond with a valid JSON object in one of two formats:
+
+Format A — Conversational reply (no action):
 \`\`\`json
 {
-  "reply": "Your friendly message here",
+  "reply": "Votre réponse claire et amicale en Markdown",
   "action": null
 }
 \`\`\`
 
-### Format B — Action to perform:
+Format B — Action to perform:
 \`\`\`json
 {
-  "reply": "Confirmation message shown to user after action",
-  "action": "action_type",
-  "payload": { ...action-specific fields }
+  "reply": "Explication et confirmation de l'action créée...",
+  "action": "create_full_project",
+  "payload": { ... }
 }
 \`\`\`
 
-## Critical Rules
+## Critical Rules:
+- ALWAYS return valid JSON. Never plain text.
+- Match the user's language (respond in French if prompt is in French).
+- Today's date for reference: {{TODAY_DATE}}
 
-- ALWAYS return valid JSON. Never return plain text.
-- ALWAYS ask for missing required information before taking action. One follow-up question at a time.
-- For create_task: if the user has multiple boards AND hasn't specified which board → respond with Format A asking them to choose. The context will include their boards list.
-- Keep replies short, warm, and action-focused. Never be verbose.
-- When confirming an action, use Format B. The reply should be a success message like "✅ Task 'Buy groceries' created in your Work board!"
-- If you cannot do something, say so clearly and suggest what you CAN help with.
-- Today's date for computing relative dates: {{TODAY_DATE}}
-
-## Available Boards Context
-{{BOARDS_CONTEXT}}
-
-## User Workspace Summary
-{{WORKSPACE_CONTEXT}}
+## Real-Time Database Context:
+{{USER_DATABASE_CONTEXT}}
 `;
 
 export async function POST(req: NextRequest) {
@@ -85,7 +234,7 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const { messages, boardsContext, workspaceContext } = body;
+    const { messages } = body;
 
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
       return NextResponse.json({ error: "Messages are required" }, { status: 400 });
@@ -93,18 +242,20 @@ export async function POST(req: NextRequest) {
 
     const apiKey = process.env.GROQ_API_KEY;
     if (!apiKey) {
-      // Fallback response without AI
       return NextResponse.json({
-        reply: "I'm having trouble connecting to the AI service right now. Please check the GROQ_API_KEY configuration.",
+        reply: "Le service IA n'est pas configuré (GROQ_API_KEY manquante).",
         action: null,
       });
     }
 
+    // Load real user database context
+    const dbSummary = await getUserDatabaseSummary(userId);
+
     const todayDate = new Date().toISOString().split("T")[0];
-    const systemPrompt = SYSTEM_PROMPT
-      .replace("{{TODAY_DATE}}", todayDate)
-      .replace("{{BOARDS_CONTEXT}}", boardsContext || "No boards available.")
-      .replace("{{WORKSPACE_CONTEXT}}", workspaceContext || "No workspace data available.");
+    const systemPrompt = SYSTEM_PROMPT.replace("{{TODAY_DATE}}", todayDate).replace(
+      "{{USER_DATABASE_CONTEXT}}",
+      dbSummary
+    );
 
     const groq = new Groq({ apiKey });
 
@@ -117,8 +268,8 @@ export async function POST(req: NextRequest) {
           content: m.content,
         })),
       ],
-      temperature: 0.4,
-      max_tokens: 800,
+      temperature: 0.3,
+      max_tokens: 1200,
       response_format: { type: "json_object" },
     });
 
@@ -132,7 +283,7 @@ export async function POST(req: NextRequest) {
     }
 
     if (!parsed.reply) {
-      parsed.reply = "I'm not sure how to respond to that. Could you rephrase?";
+      parsed.reply = "Je n'ai pas pu traiter votre demande. Pouvez-vous reformuler ?";
     }
 
     return NextResponse.json(parsed);
@@ -140,10 +291,11 @@ export async function POST(req: NextRequest) {
     console.error("AI Assistant route error:", error);
     return NextResponse.json(
       {
-        reply: "Something went wrong on my end. Please try again in a moment.",
+        reply: "Désolé, une erreur s'est produite lors de la communication avec l'assistant IA.",
         action: null,
       },
       { status: 500 }
     );
   }
 }
+

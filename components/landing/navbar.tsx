@@ -45,9 +45,11 @@ export function Navbar() {
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 flex items-center justify-between">
         {/* Logo */}
         <Link href="/" className="flex items-center gap-2.5 group">
-          <div className="grid size-9 place-items-center rounded-2xl bg-gradient-to-br from-emerald-400 via-cyan-400 to-fuchsia-500 text-white shadow-lg shadow-cyan-200/70 group-hover:scale-105 transition-transform">
-            <Sparkles className="size-4" />
-          </div>
+          <img
+            src="/logo.png"
+            alt="Tunisie Telecom Logo"
+            className="size-9 object-contain group-hover:scale-105 transition-transform"
+          />
           <div>
             <span className="text-lg font-black tracking-tight text-slate-950">Flowbase</span>
             <span className="ml-1.5 rounded-full bg-cyan-100 px-2 py-0.5 text-[10px] font-bold text-cyan-800 border border-cyan-200/60">

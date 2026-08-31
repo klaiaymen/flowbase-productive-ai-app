@@ -227,7 +227,14 @@ export function WhiteboardPanel({
                     />
                   ) : (
                     <div className="min-w-0 flex-1">
-                      <p className="text-xs font-medium truncate">{board.name}</p>
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-xs font-medium truncate">{board.name}</p>
+                        {(board as any).isShared && (
+                          <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[9px] font-bold text-emerald-800 border border-emerald-200/60 shrink-0">
+                            Shared
+                          </span>
+                        )}
+                      </div>
                       <div className="flex items-center gap-1 mt-0.5 text-[10px] opacity-70">
                         <Clock className="size-3" />
                         <span>{formatTimeAgo(board.updatedAt)}</span>

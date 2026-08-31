@@ -14,7 +14,9 @@ import { WhiteboardPanel } from "@/components/whiteboard/whiteboard-panel";
 import { WhiteboardTopBar } from "@/components/whiteboard/whiteboard-top-bar";
 import { WhiteboardCanvas, type WhiteboardCanvasRef } from "@/components/whiteboard/whiteboard-canvas";
 import { AiDiagramModal } from "@/components/whiteboard/ai-diagram-modal";
+import { InviteCollaboratorsModal } from "@/components/whiteboard/invite-collaborators-modal";
 import { Loader2, Palette } from "lucide-react";
+import { LiveblocksProvider, RoomProvider, ClientSideSuspense } from "@liveblocks/react";
 
 const colorsList = ["emerald", "violet", "sky", "amber", "rose", "indigo"];
 
@@ -24,6 +26,7 @@ export default function WhiteboardPage() {
   const [loading, setLoading] = useState(true);
   const [saveStatus, setSaveStatus] = useState<"saved" | "saving" | "unsaved">("saved");
   const [isAiModalOpen, setIsAiModalOpen] = useState(false);
+  const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [notification, setNotification] = useState<string | null>(null);
 
   const canvasRef = useRef<WhiteboardCanvasRef>(null);
@@ -188,38 +191,52 @@ export default function WhiteboardPage() {
         {/* Right Canvas Area */}
         <div className="flex-1 flex flex-col h-full min-w-0 relative">
           {activeBoard ? (
-            <>
-              {/* Top Bar */}
-              <WhiteboardTopBar
-                board={activeBoard}
-                saveStatus={saveStatus}
-                onRename={(name) => handleRename(activeBoard.id, name)}
-                onOpenAiModal={() => setIsAiModalOpen(true)}
-                onExportPng={() => canvasRef.current?.exportPng(activeBoard.name)}
-                onAddStickyNote={(color) => canvasRef.current?.addStickyNote(color)}
-                onClearCanvas={() => canvasRef.current?.clearCanvas()}
-                onDuplicate={() => handleDuplicate(activeBoard.id)}
-                onDelete={() => handleDelete(activeBoard.id)}
-              />
+            <LiveblocksProvider authEndpoint="/api/liveblocks-auth">
+              <RoomProvider id={`whiteboard-${activeBoard.id}`} initialPresence={{ cursor: null }}>
+                <ClientSideSuspense
+                  fallback={
+                    <div className="flex-1 flex flex-col items-center justify-center bg-slate-50">
+                      <div className="flex flex-col items-center gap-3">
+                        <Loader2 className="size-8 animate-spin text-emerald-500" />
+                        <p className="text-xs text-slate-500 font-medium">Connecting to live multiplayer whiteboard session…</p>
+                      </div>
+                    </div>
+                  }
+                >
+                  {/* Top Bar */}
+                  <WhiteboardTopBar
+                    board={activeBoard}
+                    saveStatus={saveStatus}
+                    onRename={(name) => handleRename(activeBoard.id, name)}
+                    onOpenAiModal={() => setIsAiModalOpen(true)}
+                    onOpenInviteModal={() => setIsInviteModalOpen(true)}
+                    onExportPng={() => canvasRef.current?.exportPng(activeBoard.name)}
+                    onAddStickyNote={(color) => canvasRef.current?.addStickyNote(color)}
+                    onClearCanvas={() => canvasRef.current?.clearCanvas()}
+                    onDuplicate={() => handleDuplicate(activeBoard.id)}
+                    onDelete={() => handleDelete(activeBoard.id)}
+                  />
 
-              {/* Notification Banner */}
-              {notification && (
-                <div className="absolute top-16 right-4 z-40 bg-slate-900 text-white px-4 py-2 rounded-xl shadow-xl text-xs font-medium animate-in fade-in slide-in-from-top-2 duration-200">
-                  {notification}
-                </div>
-              )}
+                  {/* Notification Banner */}
+                  {notification && (
+                    <div className="absolute top-16 right-4 z-40 bg-slate-900 text-white px-4 py-2 rounded-xl shadow-xl text-xs font-medium animate-in fade-in slide-in-from-top-2 duration-200">
+                      {notification}
+                    </div>
+                  )}
 
-              {/* Excalidraw Canvas Workspace */}
-              <div className="flex-1 w-full h-full relative overflow-hidden">
-                <WhiteboardCanvas
-                  key={activeBoard.id}
-                  ref={canvasRef}
-                  initialElements={parsedElements}
-                  initialAppState={parsedAppState}
-                  onChange={handleCanvasChange}
-                />
-              </div>
-            </>
+                  {/* Excalidraw Canvas Workspace */}
+                  <div className="flex-1 w-full h-full relative overflow-hidden">
+                    <WhiteboardCanvas
+                      key={activeBoard.id}
+                      ref={canvasRef}
+                      initialElements={parsedElements}
+                      initialAppState={parsedAppState}
+                      onChange={handleCanvasChange}
+                    />
+                  </div>
+                </ClientSideSuspense>
+              </RoomProvider>
+            </LiveblocksProvider>
           ) : (
             <div className="flex-1 flex flex-col items-center justify-center p-6 text-center bg-white">
               <div className="size-12 rounded-2xl bg-emerald-100 text-emerald-600 flex items-center justify-center mb-3">
@@ -240,6 +257,16 @@ export default function WhiteboardPage() {
         onClose={() => setIsAiModalOpen(false)}
         onGenerate={handleAiDiagramGenerated}
       />
+
+      {/* Invite Collaborators Modal */}
+      {activeBoard && (
+        <InviteCollaboratorsModal
+          isOpen={isInviteModalOpen}
+          onClose={() => setIsInviteModalOpen(false)}
+          whiteboardId={activeBoard.id}
+          whiteboardName={activeBoard.name}
+        />
+      )}
     </AppShell>
   );
 }

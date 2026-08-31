@@ -62,46 +62,46 @@ interface AiResponse {
 
 const SUGGESTIONS = [
   {
-    icon: ClipboardList,
-    color: "text-amber-600",
-    bg: "bg-amber-50 hover:bg-amber-100 border-amber-200",
-    label: "Create a task for tomorrow",
-    prompt: "Create a task for tomorrow",
-  },
-  {
-    icon: CalendarPlus,
-    color: "text-orange-600",
-    bg: "bg-orange-50 hover:bg-orange-100 border-orange-200",
-    label: "Add meeting reminder on calendar",
-    prompt: "Add a meeting reminder on my calendar for tomorrow",
-  },
-  {
-    icon: NotebookPen,
-    color: "text-rose-600",
-    bg: "bg-rose-50 hover:bg-rose-100 border-rose-200",
-    label: "Summarize my notes",
-    prompt: "Summarize my recent notes and give me a brief overview",
+    icon: Sparkles,
+    color: "text-emerald-600",
+    bg: "bg-emerald-50 hover:bg-emerald-100 border-emerald-200",
+    label: "Liste de mes projets & espaces",
+    prompt: "Donnez-moi la liste de mes projets et espaces de travail avec leurs détails",
   },
   {
     icon: ClipboardList,
     color: "text-violet-600",
     bg: "bg-violet-50 hover:bg-violet-100 border-violet-200",
-    label: "Create a Kanban board",
-    prompt: "Create a new Kanban board called 'Product Roadmap'",
+    label: "Plan complet : Gestion de Stock",
+    prompt: "Donnez-moi un plan de travail complet pour un projet de gestion de stock",
   },
   {
-    icon: Calendar,
+    icon: NotebookPen,
     color: "text-cyan-600",
     bg: "bg-cyan-50 hover:bg-cyan-100 border-cyan-200",
-    label: "Plan my week",
-    prompt: "Help me plan my week — what should I focus on first?",
+    label: "Créer une page dans mon espace",
+    prompt: "Crée une page de documentation intitulée 'Guide d'onboarding' dans mon espace",
   },
   {
-    icon: Sparkles,
+    icon: CalendarPlus,
+    color: "text-orange-600",
+    bg: "bg-orange-50 hover:bg-orange-100 border-orange-200",
+    label: "Rappel sur le calendrier",
+    prompt: "Ajoute un rappel de réunion sur mon calendrier pour demain à 14h",
+  },
+  {
+    icon: ClipboardList,
+    color: "text-amber-600",
+    bg: "bg-amber-50 hover:bg-amber-100 border-amber-200",
+    label: "Créer un tableau Kanban",
+    prompt: "Crée un nouveau tableau Kanban nommé 'Roadmap Produit'",
+  },
+  {
+    icon: LayoutTemplate,
     color: "text-fuchsia-600",
     bg: "bg-fuchsia-50 hover:bg-fuchsia-100 border-fuchsia-200",
-    label: "Generate a habit tracker template",
-    prompt: "Generate an AI template for a daily habit tracker",
+    label: "Générer une mini-application IA",
+    prompt: "Génère un template IA pour un tracker d'habitudes quotidiennes",
   },
 ];
 
@@ -203,7 +203,7 @@ export function AssistantClient() {
   );
 
   const handleSessionEnd = useCallback(() => {
-    setVoiceError("Voice session ended (2 minute limit). Click mic to start again.");
+    setVoiceError("Session vocale terminée. Cliquez sur le micro pour recommencer.");
   }, []);
 
   const handleVoiceError = useCallback((error: string) => {
@@ -246,6 +246,141 @@ export function AssistantClient() {
   ): Promise<{ success: boolean; label: string; href?: string }> {
     try {
       switch (action) {
+        case "create_space": {
+          const { name, description, color } = payload as {
+            name: string;
+            description?: string;
+            color?: string;
+          };
+          const { createSpace } = await import("@/app/spaces/actions");
+          const newSpace = await createSpace({
+            name: String(name),
+            description: description ? String(description) : "",
+            color: color || "emerald",
+          });
+          return {
+            success: true,
+            label: `Espace de travail "${name}" créé avec succès !`,
+            href: "/spaces",
+          };
+        }
+
+        case "create_page": {
+          const { spaceId, spaceName, name, description, content } = payload as {
+            spaceId?: number;
+            spaceName?: string;
+            name: string;
+            description?: string;
+            content?: string;
+          };
+          const { createSpace, getSpaces, createPage, updatePage } = await import(
+            "@/app/spaces/actions"
+          );
+
+          let targetSpaceId = spaceId;
+          if (!targetSpaceId && spaceName) {
+            const allSpaces = await getSpaces();
+            const found = allSpaces.find((s) =>
+              s.name.toLowerCase().includes(spaceName.toLowerCase())
+            );
+            if (found) {
+              targetSpaceId = found.id;
+            } else {
+              const created = await createSpace({ name: spaceName, color: "violet" });
+              targetSpaceId = created.id;
+            }
+          }
+
+          if (!targetSpaceId) {
+            const allSpaces = await getSpaces();
+            if (allSpaces.length > 0) {
+              targetSpaceId = allSpaces[0].id;
+            } else {
+              const created = await createSpace({ name: "Mon Espace", color: "violet" });
+              targetSpaceId = created.id;
+            }
+          }
+
+          const newPage = await createPage({
+            spaceId: targetSpaceId,
+            name: String(name),
+            description: description ? String(description) : "",
+          });
+
+          if (content && newPage?.id) {
+            await updatePage(newPage.id, { content: String(content) });
+          }
+
+          return {
+            success: true,
+            label: `Page de documentation "${name}" créée !`,
+            href: "/spaces",
+          };
+        }
+
+        case "create_full_project": {
+          const {
+            spaceName,
+            spaceDescription,
+            spaceColor,
+            pageName,
+            pageContent,
+            boardName,
+            boardColor,
+            tasks,
+          } = payload as any;
+          const { createSpace, createPage, updatePage } = await import("@/app/spaces/actions");
+          const { createBoard, getColumns, saveTask } = await import("@/app/kanban/actions");
+
+          // 1. Create Space
+          const newSpace = await createSpace({
+            name: spaceName || "Nouveau Projet",
+            description: spaceDescription || "",
+            color: spaceColor || "emerald",
+          });
+
+          // 2. Create Page in Space
+          const newPage = await createPage({
+            spaceId: newSpace.id,
+            name: pageName || "Plan de Travail & Procédures",
+            description: spaceDescription || "",
+          });
+
+          if (pageContent && newPage?.id) {
+            await updatePage(newPage.id, { content: String(pageContent) });
+          }
+
+          // 3. Create Kanban Board & Tasks
+          if (boardName) {
+            const createdBoard = await createBoard(String(boardName), boardColor || "emerald");
+            setBoards((prev) => [...prev, createdBoard]);
+
+            if (tasks && Array.isArray(tasks) && tasks.length > 0) {
+              const cols = await getColumns(createdBoard.id);
+              const todoCol = cols && cols.length > 0 ? cols[0] : null;
+              if (todoCol) {
+                for (const t of tasks) {
+                  await saveTask({
+                    columnId: todoCol.id,
+                    title: String(t.title),
+                    priority: t.priority || "medium",
+                    syncCalendar: false,
+                    syncNotes: false,
+                  });
+                }
+              }
+            }
+          }
+
+          return {
+            success: true,
+            label: `Projet "${spaceName}" créé (Espace, Documentation & Tableau Kanban avec ${
+              tasks?.length || 0
+            } tâches) !`,
+            href: "/spaces",
+          };
+        }
+
         case "create_task": {
           const { title, boardId, priority, description, dueDate } = payload as {
             title: string;
@@ -259,9 +394,14 @@ export function AssistantClient() {
           const { getColumns } = await import("@/app/kanban/actions");
           const cols = await getColumns(boardId);
           if (!cols || cols.length === 0) {
-            return { success: false, label: "Board has no columns. Please add columns first." };
+            return { success: false, label: "Ce tableau n'a pas de colonnes." };
           }
-          const todoCol = cols.find((c) => c.name.toLowerCase().includes("todo") || c.name.toLowerCase().includes("backlog")) ?? cols[0];
+          const todoCol =
+            cols.find(
+              (c) =>
+                c.name.toLowerCase().includes("todo") ||
+                c.name.toLowerCase().includes("backlog")
+            ) ?? cols[0];
 
           await saveTask({
             columnId: todoCol.id,
@@ -273,15 +413,19 @@ export function AssistantClient() {
             syncNotes: false,
           });
 
-          const boardName = boards.find((b) => b.id === boardId)?.name ?? "your board";
-          return { success: true, label: `Task "${title}" created in "${boardName}"`, href: "/kanban" };
+          const boardName = boards.find((b) => b.id === boardId)?.name ?? "votre tableau";
+          return {
+            success: true,
+            label: `Tâche "${title}" créée dans "${boardName}"`,
+            href: "/kanban",
+          };
         }
 
         case "create_board": {
           const { name, color } = payload as { name: string; color: string };
           const board = await createBoard(String(name), String(color || "violet"));
           setBoards((prev) => [...prev, board]);
-          return { success: true, label: `Board "${name}" created`, href: "/kanban" };
+          return { success: true, label: `Tableau Kanban "${name}" créé`, href: "/kanban" };
         }
 
         case "add_calendar_item": {
@@ -301,7 +445,11 @@ export function AssistantClient() {
             time: time ? String(time) : null,
             description: description ? String(description) : null,
           });
-          return { success: true, label: `"${title}" added to your calendar`, href: "/calendar" };
+          return {
+            success: true,
+            label: `"${title}" ajouté à votre calendrier`,
+            href: "/calendar",
+          };
         }
 
         case "create_note": {
@@ -309,15 +457,25 @@ export function AssistantClient() {
           const note = await createNote();
           if (title) {
             const { updateNote } = await import("@/app/notes/actions");
-            await updateNote(note.id, { title: String(title), content: content ? String(content) : "" });
+            await updateNote(note.id, {
+              title: String(title),
+              content: content ? String(content) : "",
+            });
           }
-          return { success: true, label: `Note "${title || "Untitled"}" created`, href: "/notes" };
+          return {
+            success: true,
+            label: `Note "${title || "Sans titre"}" créée`,
+            href: "/notes",
+          };
         }
 
         case "create_whiteboard": {
           const { name, color } = payload as { name: string; color?: string };
-          await createWhiteboard(String(name || "Untitled Whiteboard"), String(color || "emerald"));
-          return { success: true, label: `Whiteboard "${name}" created`, href: "/whiteboard" };
+          await createWhiteboard(
+            String(name || "Sans titre"),
+            String(color || "emerald")
+          );
+          return { success: true, label: `Tableau blanc "${name}" créé`, href: "/whiteboard" };
         }
 
         case "generate_template": {
@@ -327,7 +485,7 @@ export function AssistantClient() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ prompt: String(prompt) }),
           });
-          if (!res.ok) throw new Error("Template generation failed");
+          if (!res.ok) throw new Error("Génération de template échouée");
           const { result } = await res.json();
           if (result) {
             const { saveAiTemplate } = await import("@/app/templates/actions");
@@ -339,23 +497,27 @@ export function AssistantClient() {
               layout: result.layout || "single-page",
               schemaJson: JSON.stringify({ sections: result.sections || [] }),
             });
-            return { success: true, label: `AI Template "${result.appName}" generated`, href: `/templates/${saved.id}` };
+            return {
+              success: true,
+              label: `Template IA "${result.appName}" généré`,
+              href: `/templates/${saved.id}`,
+            };
           }
-          return { success: false, label: "Template generation returned no result." };
+          return { success: false, label: "La génération de template n'a renvoyé aucun résultat." };
         }
 
         case "navigate": {
           const { href } = payload as { href: string };
           router.push(String(href));
-          return { success: true, label: `Navigating to ${href}` };
+          return { success: true, label: `Navigation vers ${href}` };
         }
 
         default:
-          return { success: false, label: `Unknown action: ${action}` };
+          return { success: false, label: `Action inconnue : ${action}` };
       }
     } catch (err: any) {
       console.error("Action execution failed:", err);
-      return { success: false, label: err.message || "Action failed. Please try again." };
+      return { success: false, label: err.message || "L'action a échoué. Veuillez réessayer." };
     }
   }
 

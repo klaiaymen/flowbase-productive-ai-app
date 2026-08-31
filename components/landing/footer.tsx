@@ -11,9 +11,11 @@ export function Footer() {
           {/* Brand Info */}
           <div className="col-span-2 space-y-4">
             <Link href="/" className="flex items-center gap-2.5">
-              <div className="grid size-9 place-items-center rounded-2xl bg-gradient-to-br from-emerald-400 via-cyan-400 to-fuchsia-500 text-white shadow-md">
-                <Sparkles className="size-4" />
-              </div>
+              <img
+                src="/logo.png"
+                alt="Tunisie Telecom Logo"
+                className="size-9 object-contain"
+              />
               <span className="text-lg font-black tracking-tight text-slate-950">Flowbase</span>
             </Link>
             <p className="text-xs text-slate-600 font-medium max-w-sm leading-relaxed">

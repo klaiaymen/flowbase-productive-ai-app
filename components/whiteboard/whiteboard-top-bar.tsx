@@ -15,7 +15,10 @@ import {
   Trash2,
   CheckCircle2,
   Loader2,
+  Users,
+  UserPlus,
 } from "lucide-react";
+import { useOthers, useSelf } from "@liveblocks/react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -24,6 +27,7 @@ interface WhiteboardTopBarProps {
   saveStatus: "saved" | "saving" | "unsaved";
   onRename: (newName: string) => void;
   onOpenAiModal: () => void;
+  onOpenInviteModal: () => void;
   onExportPng: () => void;
   onAddStickyNote: (color: string) => void;
   onClearCanvas: () => void;
@@ -44,12 +48,15 @@ export function WhiteboardTopBar({
   saveStatus,
   onRename,
   onOpenAiModal,
+  onOpenInviteModal,
   onExportPng,
   onAddStickyNote,
   onClearCanvas,
   onDuplicate,
   onDelete,
 }: WhiteboardTopBarProps) {
+  const others = useOthers();
+  const self = useSelf();
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [title, setTitle] = useState(board.name);
   const [showStickyPicker, setShowStickyPicker] = useState(false);
@@ -121,10 +128,58 @@ export function WhiteboardTopBar({
             </>
           )}
         </div>
+
+        {/* Live Multiplayer Presence Indicator */}
+        <div className="flex items-center gap-2 pl-2 border-l border-slate-200">
+          <div className="flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-50 text-[11px] font-semibold text-emerald-700 border border-emerald-200/60 shadow-2xs">
+            <span className="relative flex size-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+              <span className="relative inline-flex rounded-full size-2 bg-emerald-500" />
+            </span>
+            <Users className="size-3 text-emerald-600" />
+            <span>{others.length + 1} online</span>
+          </div>
+
+          {/* Collaborators Avatar Stack */}
+          <div className="hidden sm:flex items-center">
+            {self && (
+              <img
+                src={(self.info as any)?.avatar || `https://api.dicebear.com/7.x/adventurer/svg?seed=self`}
+                alt={(self.info as any)?.name || "You"}
+                title={`${(self.info as any)?.name || "You"} (You)`}
+                className="size-7 rounded-full border-2 border-emerald-400 shadow-xs z-10"
+              />
+            )}
+            {others.slice(0, 3).map(({ connectionId, info }) => (
+              <img
+                key={connectionId}
+                src={(info as any)?.avatar || `https://api.dicebear.com/7.x/adventurer/svg?seed=${connectionId}`}
+                alt={(info as any)?.name || "Collaborator"}
+                title={(info as any)?.name || "Collaborator"}
+                className="size-7 rounded-full border-2 border-white shadow-xs -ml-2 hover:z-20 transition-all"
+              />
+            ))}
+            {others.length > 3 && (
+              <div className="size-7 rounded-full bg-slate-200 border-2 border-white text-[10px] font-extrabold text-slate-600 flex items-center justify-center -ml-2 z-10">
+                +{others.length - 3}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Right Actions */}
       <div className="flex items-center gap-2">
+        {/* Share / Invite Collaborators Button */}
+        <Button
+          onClick={onOpenInviteModal}
+          variant="outline"
+          size="sm"
+          className="h-9 gap-1.5 bg-emerald-50 hover:bg-emerald-100 border-emerald-200 text-emerald-700 rounded-xl text-xs font-semibold shadow-xs transition-colors"
+        >
+          <UserPlus className="size-4 text-emerald-600" />
+          <span>Share</span>
+        </Button>
         {/* Sticky Notes Quick Action */}
         <div className="relative">
           <Button

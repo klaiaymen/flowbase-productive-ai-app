@@ -5,6 +5,9 @@ import React, { useState, useEffect, useRef, useImperativeHandle, forwardRef } f
 import dynamic from "next/dynamic";
 import { Loader2 } from "lucide-react";
 
+import { useUpdateMyPresence, useBroadcastEvent, useEventListener } from "@liveblocks/react";
+import { LiveCursors } from "./live-cursors";
+
 // Dynamic import of Excalidraw (CSR only)
 const Excalidraw = dynamic(
   () => import("@excalidraw/excalidraw").then((mod) => mod.Excalidraw),
@@ -39,6 +42,24 @@ export const WhiteboardCanvas = forwardRef<WhiteboardCanvasRef, WhiteboardCanvas
     const [excalidrawAPI, setExcalidrawAPI] = useState<any>(null);
     const elementsRef = useRef<any[]>(initialElements);
     const saveTimerRef = useRef<NodeJS.Timeout | null>(null);
+    const containerRef = useRef<HTMLDivElement>(null);
+    const isRemoteUpdateRef = useRef(false);
+
+    const updateMyPresence = useUpdateMyPresence();
+    const broadcast = useBroadcastEvent();
+
+    // Listen to real-time scene updates from other collaborators
+    useEventListener(({ event }) => {
+      if (event && (event as any).type === "SCENE_UPDATE" && excalidrawAPI) {
+        isRemoteUpdateRef.current = true;
+        excalidrawAPI.updateScene({
+          elements: (event as any).elements,
+        });
+        setTimeout(() => {
+          isRemoteUpdateRef.current = false;
+        }, 100);
+      }
+    });
 
     // Sync when initialElements changes (switching whiteboards)
     useEffect(() => {
@@ -51,9 +72,36 @@ export const WhiteboardCanvas = forwardRef<WhiteboardCanvasRef, WhiteboardCanvas
       }
     }, [initialElements, initialAppState, excalidrawAPI]);
 
-    // Handle scene changes with debounce for autosave
+    // Track local cursor position for Liveblocks real-time presence
+    const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+      if (!containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      updateMyPresence({
+        cursor: {
+          x: Math.round(e.clientX - rect.left),
+          y: Math.round(e.clientY - rect.top),
+        },
+      });
+    };
+
+    const handlePointerLeave = () => {
+      updateMyPresence({ cursor: null });
+    };
+
+    // Handle scene changes with broadcast + debounce for autosave
     const handleChange = (elements: readonly any[], appState: any) => {
       elementsRef.current = [...elements];
+
+      if (!isRemoteUpdateRef.current) {
+        try {
+          broadcast({
+            type: "SCENE_UPDATE",
+            elements: [...elements],
+          });
+        } catch {
+          // Ignore if disconnected
+        }
+      }
 
       if (saveTimerRef.current) {
         clearTimeout(saveTimerRef.current);
@@ -201,7 +249,12 @@ export const WhiteboardCanvas = forwardRef<WhiteboardCanvasRef, WhiteboardCanvas
     }));
 
     return (
-      <div className="w-full h-full relative overflow-hidden bg-slate-50">
+      <div
+        ref={containerRef}
+        className="w-full h-full relative overflow-hidden bg-slate-50"
+        onPointerMove={handlePointerMove}
+        onPointerLeave={handlePointerLeave}
+      >
         <Excalidraw
           excalidrawAPI={(api: any) => setExcalidrawAPI(api)}
           initialData={{
@@ -229,6 +282,7 @@ export const WhiteboardCanvas = forwardRef<WhiteboardCanvasRef, WhiteboardCanvas
             },
           }}
         />
+        <LiveCursors />
       </div>
     );
   }

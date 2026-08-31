@@ -1,8 +1,8 @@
 import { Liveblocks } from "@liveblocks/node";
 import { currentUser } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
-import { db, kanbanBoards, kanbanBoardShares, users } from "@/db";
-import { eq, and, or, exists } from "drizzle-orm";
+import { db, kanbanBoards, kanbanBoardShares, whiteboards, whiteboardShares, users } from "@/db";
+import { eq, and, or } from "drizzle-orm";
 
 const liveblocks = new Liveblocks({
   secret: process.env.LIVEBLOCKS_SECRET_KEY!,
@@ -34,32 +34,54 @@ export async function POST(request: NextRequest) {
       return new NextResponse("Room ID is required", { status: 400 });
     }
 
-    // 4. Verify user has access to the board room
-    // Match pattern: "kanban-board-${boardId}"
-    const boardIdMatch = room.match(/^kanban-board-(\d+)$/);
-    if (!boardIdMatch) {
+    // 4. Verify user has access to the requested room
+    const kanbanMatch = room.match(/^kanban-board-(\d+)$/);
+    const whiteboardMatch = room.match(/^whiteboard-(\d+)$/);
+
+    if (!kanbanMatch && !whiteboardMatch) {
       return new NextResponse("Invalid Room Format", { status: 400 });
     }
 
-    const boardId = parseInt(boardIdMatch[1], 10);
-
-    // Board is accessible if user is owner OR board is shared with user's email
-    const accessibleBoards = await db
-      .select({ id: kanbanBoards.id })
-      .from(kanbanBoards)
-      .leftJoin(kanbanBoardShares, eq(kanbanBoards.id, kanbanBoardShares.boardId))
-      .where(
-        and(
-          eq(kanbanBoards.id, boardId),
-          or(
-            eq(kanbanBoards.userId, dbUser.id),
-            eq(kanbanBoardShares.email, email.toLowerCase())
+    if (kanbanMatch) {
+      const boardId = parseInt(kanbanMatch[1], 10);
+      const accessibleBoards = await db
+        .select({ id: kanbanBoards.id })
+        .from(kanbanBoards)
+        .leftJoin(kanbanBoardShares, eq(kanbanBoards.id, kanbanBoardShares.boardId))
+        .where(
+          and(
+            eq(kanbanBoards.id, boardId),
+            or(
+              eq(kanbanBoards.userId, dbUser.id),
+              eq(kanbanBoardShares.email, email.toLowerCase())
+            )
           )
-        )
-      );
+        );
 
-    if (accessibleBoards.length === 0) {
-      return new NextResponse("Forbidden", { status: 403 });
+      if (accessibleBoards.length === 0) {
+        return new NextResponse("Forbidden", { status: 403 });
+      }
+    }
+
+    if (whiteboardMatch) {
+      const whiteboardId = parseInt(whiteboardMatch[1], 10);
+      const accessibleWhiteboards = await db
+        .select({ id: whiteboards.id })
+        .from(whiteboards)
+        .leftJoin(whiteboardShares, eq(whiteboards.id, whiteboardShares.whiteboardId))
+        .where(
+          and(
+            eq(whiteboards.id, whiteboardId),
+            or(
+              eq(whiteboards.clerkUserId, clerkUser.id),
+              eq(whiteboardShares.email, email.toLowerCase())
+            )
+          )
+        );
+
+      if (accessibleWhiteboards.length === 0) {
+        return new NextResponse("Forbidden", { status: 403 });
+      }
     }
 
     // 5. Prepare Liveblocks session with user metadata

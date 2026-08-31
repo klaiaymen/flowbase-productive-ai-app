@@ -8,6 +8,9 @@ export const metadata: Metadata = {
   description: "Generate custom single-page mini-apps like Habit Trackers, Budget Trackers, and Study Planners using AI.",
 };
 
+export const dynamic = "force-dynamic";
+
+
 export default async function TemplatesPage() {
   const appsRaw = await getAiTemplates();
 
